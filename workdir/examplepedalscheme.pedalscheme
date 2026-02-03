@@ -1,0 +1,6 @@
+hi: IN; first_hipass: 1000 # hi pass filter with cutoff of 1khz
+lo: first_hipass; first_lopass: 15000 # low pass filter that captures output from first_hipass, cutoff 15khz
+gain: first_lopass; first_gain: 1.4 # amplify first_lopass output by 1.4
+sum: first_hipass, first_gain; first_sum: 0.2, 0.8, 2.4 # 20% of first_hipass output + 80% of first_gain output, multiply that by 2.4
+drywet: IN, first_sum; first_drywet: 0.2, 0.8 # mix 20% of IN and 80% of first_sum
+OUT: first_drywet
