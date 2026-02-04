@@ -9,6 +9,6 @@
 #include <vector>
 #include <string>
 
-void wavDump(std::vector<float>& pDataIn, std::string pFileName, int pSampleRate);
+void wavDump(std::vector<float>& pDataIn, const std::string& pFileName, int pSampleRate);
 
 #endif //WAV_HPP

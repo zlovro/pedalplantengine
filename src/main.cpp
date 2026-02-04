@@ -13,6 +13,8 @@
 
 #include <wav.hpp>
 
+#include "fx/fx_curve.hpp"
+
 #if WINDOWS
 #define sleepMs(x) Sleep(x)
 #endif
@@ -106,22 +108,26 @@ std::map<int, std::array<float *, 2> > gFxOutputDataMap;
 
 int gFxInputInstanceId = 0;
 
-void fxUpdateChainMemory()
+void fxDestroyChain()
 {
     for (auto &fx: gFxChain)
     {
-        if (fx->instanceId != gFxInputInstanceId)
-        {
-            delete[] gFxOutputDataMap[fx->instanceId][0];
-            delete[] gFxOutputDataMap[fx->instanceId][1];
-        }
+        delete[] gFxOutputDataMap[fx->instanceId][0];
+        delete[] gFxOutputDataMap[fx->instanceId][1];
 
         delete gFxUsrDataMap[fx->instanceId][0];
         delete gFxUsrDataMap[fx->instanceId][1];
+
+        delete fx;
     }
 
     gFxUsrDataMap.clear();
     gFxOutputDataMap.clear();
+}
+
+void fxUpdateChainMemory()
+{
+    fxDestroyChain();
 
     gFxOutputDataMap[gFxInputInstanceId][0] = gInBuf[0];
     gFxOutputDataMap[gFxInputInstanceId][1] = gInBuf[1];
@@ -173,6 +179,50 @@ void process()
     processChannel(1);
 }
 
+typedef enum
+{
+    APP_STATE_REGULAR,
+    APP_STATE_RECORDING_INPUT,
+    APP_STATE_RECORDING_OUTPUT,
+    APP_STATE_PLAYING_LOOP,
+} AppState;
+
+AppState                          gAppState = APP_STATE_REGULAR;
+std::array<std::vector<float>, 2> gLoopBuffer;
+std::array<std::vector<float>, 2> gRecordOutBuffer;
+
+void startRecordingOutput()
+{
+    gAppState = APP_STATE_RECORDING_OUTPUT;
+
+    gRecordOutBuffer[0].clear();
+    gRecordOutBuffer[1].clear();
+}
+
+void stopRecordingOutput()
+{
+    wavDump(gRecordOutBuffer[0], "recording-out-ch0.wav", gAsioDrvInfEx.sampleRate);
+    wavDump(gRecordOutBuffer[1], "recording-out-ch1.wav", gAsioDrvInfEx.sampleRate);
+
+    gAppState = APP_STATE_REGULAR;
+
+    gRecordOutBuffer[0].clear();
+    gRecordOutBuffer[1].clear();
+}
+
+void startRecordingInput()
+{
+    gAppState = APP_STATE_RECORDING_INPUT;
+
+    gLoopBuffer[0].clear();
+    gLoopBuffer[1].clear();
+}
+
+void stopRecordingInput()
+{
+    gAppState = APP_STATE_PLAYING_LOOP;
+}
+
 void asioCbBufSw(long pDoubleBufIdx, ASIOBool pDirectProcess)
 {
     long bufSz = gAsioDrvInfEx.actualBufSz;
@@ -182,8 +232,18 @@ void asioCbBufSw(long pDoubleBufIdx, ASIOBool pDirectProcess)
         auto bufInfo = gAsioBufInfos[i];
         auto chInfo  = gAsioDrvInfEx.chInfos[i];
 
-        auto inBuf  = gInBuf[bufInfo.channelNum];
+        auto inBuf = gInBuf[bufInfo.channelNum];
+        if (gAppState == APP_STATE_PLAYING_LOOP)
+        {
+            inBuf = gLoopBuffer[bufInfo.channelNum].data();
+        }
+
         auto outBuf = gOutBuf[bufInfo.channelNum];
+        if (gAppState == APP_STATE_RECORDING_INPUT)
+        {
+            // dont apply effects, recording only input
+            outBuf = inBuf;
+        }
 
         if (bufInfo.isInput)
         {
@@ -196,7 +256,7 @@ void asioCbBufSw(long pDoubleBufIdx, ASIOBool pDirectProcess)
                     for (int j = 0; j < bufSz; ++j)
                     {
                         int32_t y = ((int32_t *) srcBuf)[j];
-                        inBuf[j]  = (float) y / (float) -INT32_MIN;
+                        inBuf[j]  = (float) y / (float) (1L << 31);
                     }
                     break;
                 }
@@ -206,7 +266,7 @@ void asioCbBufSw(long pDoubleBufIdx, ASIOBool pDirectProcess)
                     for (int j = 0; j < bufSz; ++j)
                     {
                         int16_t y = ((int16_t *) srcBuf)[j];
-                        inBuf[j]  = (float) y / (float) -INT16_MIN;
+                        inBuf[j]  = (float) y / (float) (1L << 15);
                     }
                     break;
                 }
@@ -238,7 +298,15 @@ void asioCbBufSw(long pDoubleBufIdx, ASIOBool pDirectProcess)
         }
     }
 
-    process();
+    if (gAppState == APP_STATE_RECORDING_INPUT)
+    {
+        gLoopBuffer[0].insert(gLoopBuffer[0].end(), gInBuf[0], gInBuf[0] + bufSz);
+        gLoopBuffer[1].insert(gLoopBuffer[1].end(), gInBuf[1], gInBuf[1] + bufSz);
+    }
+    else
+    {
+        process();
+    }
 }
 
 void asioCbSampleRateChange(ASIOSampleRate pSr)
@@ -312,19 +380,17 @@ void testHiLoChain()
 
 void testDistorsion()
 {
-    auto hi1   = new FxDescriptorHighPassFilterFirstOrder(3000);
-    auto gain1 = new FxDescriptorGain(10000);
-    auto gain2 = new FxDescriptorGain(0.1F);
-    auto lo1   = new FxDescriptorLowPassFilterFirstOrder(17000);
+    auto hi1    = new FxDescriptorHighPassFilterFirstOrder(4000);
+    auto gain1  = new FxDescriptorGain(800);
+    auto diode1 = new FxDescriptorGenericDiodeCurve(1.05F, 10);
 
-    const float DIST = 0.74F;
-    auto        sum1 = new FxDescriptorSum(gFxInputInstanceId, 1 - DIST, lo1->instanceId, DIST, 2);
+    const float DIST    = 0.74F;
+    auto        dryWet1 = new FxDescriptorDryWet(gFxInputInstanceId, diode1->instanceId, DIST, 1.0F);
 
     gFxChain.push_back(hi1);
     gFxChain.push_back(gain1);
-    gFxChain.push_back(gain2);
-    gFxChain.push_back(lo1);
-    gFxChain.push_back(sum1);
+    gFxChain.push_back(diode1);
+    gFxChain.push_back(dryWet1);
 }
 
 errCode main2()
@@ -409,22 +475,11 @@ errCode main2()
         }
         #endif
 
+
         fflush(stdout);
 
         gTimeMs += 100;
-
-        // auto sumParams     = ((FxParamsSum *) gFxChain.at(gFxChain.size() - 1)->params);
-        // auto y             = (sinf(((float) gTimeMs / 1000.0F) * 2 * (float) M_PI / 5.0F) + 1) / 2;
-        // sumParams->weightA = y;
-        // sumParams->weightB = 1 - y;
-
-        // if (gTimeMs >= 5000)<
-        // {
-        //     break;
-        // }>
     }
-
-    // wavDump(gDbgOut, "lopass.wav", gAsioDrvInfEx.sampleRate);
 
     asioErr = ASIOStop();
     if (asioErr != ASE_OK)

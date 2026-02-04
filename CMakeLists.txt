@@ -17,5 +17,6 @@ add_executable(pedalplantengine
         src/wav.hpp
         src/fx/fx_amplitude.hpp
         src/fx/fx_mix.hpp
+        src/fx/fx_curve.hpp
         #        ASIOSDK/host/sample/hostsample.cpp
 )

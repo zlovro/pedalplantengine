@@ -21,6 +21,10 @@ typedef enum
     FX_ID_COMPRESSOR,
 
     FX_ID_SUM,
+    FX_ID_DRYWET,
+
+    FX_ID_BEZIER_CURVE,
+    FX_ID_GENERIC_DIODE_CURVE,
 } FxId;
 
 typedef void (*FxProcessor)(float *pIn, float *pOut, int pBufSz, int pSampleRate, void *pParams, void **pUsrData, int pCh, std::map<int, std::array<float *, 2> > *pOutputMap);
@@ -31,6 +35,7 @@ class FxDescriptor
     // usrData, if unused, must be nullptr, if used, must be allocated with new (NOT new[]!) and the underlying type should not have any destructors
     FxProcessor processor;
     void *      params;
+    // void (*     paramsDestructor)(FxDescriptor *pFx){};
     int         instanceId;
 
     FxDescriptor();
