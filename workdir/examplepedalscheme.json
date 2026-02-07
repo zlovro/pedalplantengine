@@ -1,0 +1,104 @@
+[
+    {
+        "name": "sum1",
+        "type": "sum",
+        "inputs": [
+            "IN",
+            "gain3"
+        ],
+        "params": {
+            "weightA": 0.67,
+            "weightB": 0.33,
+            "outGain": 2.4
+        }
+    },
+    {
+        "name": "gain1",
+        "type": "gain",
+        "inputs": [
+            "IN"
+        ],
+        "params": {
+            "gain": 1.1
+        }
+    },
+    {
+        "name": "gain3",
+        "type": "gain",
+        "inputs": [
+            "gain1"
+        ],
+        "params": {
+            "gain": 1.3
+        }
+    },
+    {
+        "name": "gain2",
+        "type": "gain",
+        "inputs": [
+            "IN"
+        ],
+        "params": {
+            "gain": 1.4
+        }
+    },
+    {
+        "name": "gain4",
+        "type": "gain",
+        "inputs": [
+            "sum1"
+        ],
+        "params": {
+            "gain": 0.9
+        }
+    },
+    {
+        "name": "sum2",
+        "type": "sum",
+        "inputs": [
+            "gain2",
+            "dw1"
+        ],
+        "params": {
+            "weightA": 0.57,
+            "weightB": 0.43,
+            "outGain": 2.4
+        }
+    },
+    {
+        "name": "dw1",
+        "type": "drywet",
+        "inputs": [
+            "gain3",
+            "gain4"
+        ],
+        "params": {
+            "balance": 0.33,
+            "outGain": 2.4
+        }
+    },
+    {
+        "name": "dw2",
+        "type": "drywet",
+        "inputs": [
+            "dw3",
+            "sum2"
+        ],
+        "params": {
+            "balance": 0.8,
+            "outGain": 2
+        }
+    },
+    {
+        "name": "dw3",
+        "type": "drywet",
+        "inputs": [
+            "gain3",
+            "gain4"
+        ],
+        "params": {
+            "balance": 0.5,
+            "outGain": 1
+        }
+    }
+]

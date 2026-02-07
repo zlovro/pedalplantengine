@@ -9,53 +9,57 @@
 #include <algorithm>
 #include <fx/fx.hpp>
 
-// gain
-typedef struct
+namespace Fx
 {
-    float gain;
-} FxParamsGain;
-
-class FxDescriptorGain : public FxDescriptor
-{
-    public:
-    explicit FxDescriptorGain(float pGain = 1.0F)
+    // gain
+    typedef struct
     {
-        auto par  = new FxParamsGain();
-        par->gain = pGain;
+        float gain;
+    } FxParamsGain;
 
-        params = par;
-
-        processor = [](float *pIn, float *pOut, int pBufSize, int pSampleRate, void *pParams, void **pUsrData, int pCh, std::map<int, std::array<float *, 2> > *pOutputMap)
+    class FxDescriptorGain : public FxDescriptor
+    {
+        public:
+        explicit FxDescriptorGain(FxInstanceId pInput, float pGain = 1.0F) : FxDescriptor(pInput)
         {
-            auto params = (FxParamsGain *) pParams;
-            auto gain   = params->gain;
+            auto par  = new FxParamsGain();
+            par->gain = pGain;
 
-            for (int i = 0; i < pBufSize; ++i)
+            params = par;
+
+            processor = [](std::vector<FxInstanceId>& pInputs, float *pOut, int pBufSize, int pSampleRate, void *pParams, void **pUsrData, int pCh, std::map<int, std::array<float *, 2> > *pOutputMap)
             {
-                pOut[i] = std::clamp(pIn[i] * gain, -1.0F, 1.0F);
-            }
-        };
-    }
+                auto pIn = pOutputMap->at(pInputs.at(0))[pCh];
 
-    FxParamsGain *getParams()
-    {
-        return (FxParamsGain *) params;
-    }
+                auto params = (FxParamsGain *) pParams;
+                auto gain   = params->gain;
 
-    FxId getId() override
-    {
-        return FX_ID_GAIN;
-    }
+                for (int i = 0; i < pBufSize; ++i)
+                {
+                    pOut[i] = std::clamp(pIn[i] * gain, -1.0F, 1.0F);
+                }
+            };
+        }
 
-    const char *getName() override
-    {
-        return "Gain";
-    }
+        FxParamsGain *getParams()
+        {
+            return (FxParamsGain *) params;
+        }
 
-    ~FxDescriptorGain() override
-    {
-        delete getParams();
-    }
-};
+        FxId getId() override
+        {
+            return FX_ID_GAIN;
+        }
 
+        const char *getName() override
+        {
+            return "Gain";
+        }
+
+        ~FxDescriptorGain() override
+        {
+            delete getParams();
+        }
+    };
+}
 #endif //FX_AMPLITUDE_HPP

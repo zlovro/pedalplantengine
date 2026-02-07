@@ -6,132 +6,139 @@
 #ifndef FX_XPASS_HPP
 #define FX_XPASS_HPP
 
-#include <fx//fx.hpp>
+#include <fx/fx.hpp>
 
-// 1st order lowpass
-
-typedef struct
+namespace Fx
 {
-    float cutoffFreq;
-} FxParamsLowPassFirstOrder;
+    // 1st order lowpass
 
-class FxDescriptorLowPassFilterFirstOrder : public FxDescriptor
-{
-    public:
-    explicit FxDescriptorLowPassFilterFirstOrder(float pCutoffFreq = 22000.0F)
+    typedef struct
     {
-        auto par        = new FxParamsLowPassFirstOrder();
-        par->cutoffFreq = pCutoffFreq;
+        float cutoffFreq;
+    } FxParamsLowPassFirstOrder;
 
-        params = par;
-
-        processor = [](float *pIn, float *pOut, int pBufSize, int pSampleRate, void *pParams, void **pUsrData, int pCh, std::map<int, std::array<float *, 2> > *pOutputMap)
+    class FxDescriptorLowPassFilterFirstOrder : public FxDescriptor
+    {
+        public:
+        explicit FxDescriptorLowPassFilterFirstOrder(FxInstanceId pInput, float pCutoffFreq = 22000.0F) : FxDescriptor(pInput)
         {
-            auto params = (FxParamsLowPassFirstOrder *) pParams;
+            auto par        = new FxParamsLowPassFirstOrder();
+            par->cutoffFreq = pCutoffFreq;
 
-            auto samplingPeriod = 1.0F / (float) pSampleRate;
-            auto b              = 2 * (float) M_PI * samplingPeriod * params->cutoffFreq;
-            auto a              = b / (b + 1);
+            params = par;
 
-            if (!*pUsrData)
+            processor = [](std::vector<FxInstanceId> &pInputs, float *pOut, int pBufSize, int pSampleRate, void *pParams, void **pUsrData, int pCh, std::map<int, std::array<float *, 2> > *pOutputMap)
             {
-                *pUsrData            = new float;
-                *(float *) *pUsrData = pIn[0];
-            }
+                auto pIn = pOutputMap->at(pInputs[0])[pCh];
 
-            auto lastState = *(float *) *pUsrData;
-            pOut[0]        = a * pIn[0] + (1 - a) * lastState;
+                auto params = (FxParamsLowPassFirstOrder *) pParams;
 
-            for (int i = 1; i < pBufSize; ++i)
-            {
-                pOut[i] = a * pIn[i] + (1 - a) * pOut[i - 1];
-            }
+                auto samplingPeriod = 1.0F / (float) pSampleRate;
+                auto b              = 2 * (float) M_PI * samplingPeriod * params->cutoffFreq;
+                auto a              = b / (b + 1);
 
-            *(float *) *pUsrData = pOut[pBufSize - 1];
-        };
-    }
+                if (!*pUsrData)
+                {
+                    *pUsrData            = new float;
+                    *(float *) *pUsrData = pIn[0];
+                }
 
-    FxParamsLowPassFirstOrder *getParams()
-    {
-        return (FxParamsLowPassFirstOrder *) params;
-    }
+                auto lastState = *(float *) *pUsrData;
+                pOut[0]        = a * pIn[0] + (1 - a) * lastState;
 
-    FxId getId() override
-    {
-        return FX_ID_LOPASS_FIRST_ORDER;
-    }
+                for (int i = 1; i < pBufSize; ++i)
+                {
+                    pOut[i] = a * pIn[i] + (1 - a) * pOut[i - 1];
+                }
 
-    const char *getName() override
-    {
-        return "Low pass filter (1st order)";
-    }
+                *(float *) *pUsrData = pOut[pBufSize - 1];
+            };
+        }
 
-    ~FxDescriptorLowPassFilterFirstOrder() override
-    {
-        delete getParams();
-    }
-};
-
-// 1st order hipass
-typedef struct
-{
-    float cutoffFreq;
-} FxParamsHighPassFirstOrder;
-
-class FxDescriptorHighPassFilterFirstOrder : public FxDescriptor
-{
-    public:
-    explicit FxDescriptorHighPassFilterFirstOrder(float pCutoffFreq = 22000.0F)
-    {
-        auto par        = new FxParamsHighPassFirstOrder();
-        par->cutoffFreq = pCutoffFreq;
-
-        params = par;
-
-        processor = [](float *pIn, float *pOut, int pBufSize, int pSampleRate, void *pParams, void **pUsrData, int pCh, std::map<int, std::array<float *, 2> > *pOutputMap)
+        FxParamsLowPassFirstOrder *getParams()
         {
-            auto params = (FxParamsHighPassFirstOrder *) pParams;
+            return (FxParamsLowPassFirstOrder *) params;
+        }
 
-            auto samplingPeriod = 1.0F / (float) pSampleRate;
-            auto a              = 1.0F / (1 + 2 * (float) M_PI * samplingPeriod * params->cutoffFreq);
+        FxId getId() override
+        {
+            return FX_ID_LOPASS_FIRST_ORDER;
+        }
 
-            if (!*pUsrData)
+        const char *getName() override
+        {
+            return "Low pass filter (1st order)";
+        }
+
+        ~FxDescriptorLowPassFilterFirstOrder() override
+        {
+            delete getParams();
+        }
+    };
+
+    // 1st order hipass
+    typedef struct
+    {
+        float cutoffFreq;
+    } FxParamsHighPassFirstOrder;
+
+    class FxDescriptorHighPassFilterFirstOrder : public FxDescriptor
+    {
+        public:
+        explicit FxDescriptorHighPassFilterFirstOrder(FxInstanceId pInput, float pCutoffFreq = 22000.0F) : FxDescriptor(pInput)
+        {
+            auto par        = new FxParamsHighPassFirstOrder();
+            par->cutoffFreq = pCutoffFreq;
+
+            params = par;
+
+            processor = [](std::vector<FxInstanceId> &pInputs, float *pOut, int pBufSize, int pSampleRate, void *pParams, void **pUsrData, int pCh, std::map<int, std::array<float *, 2> > *pOutputMap)
             {
-                *pUsrData            = new float;
-                *(float *) *pUsrData = pIn[0];
-            }
+                auto pIn = pOutputMap->at(pInputs[0])[pCh];
 
-            auto lastState = *(float *) *pUsrData;
-            pOut[0]        = lastState;
+                auto params = (FxParamsHighPassFirstOrder *) pParams;
 
-            for (int i = 1; i < pBufSize; ++i)
-            {
-                pOut[i] = a * pOut[i - 1] + a * (pIn[i] - pIn[i - 1]);
-            }
+                auto samplingPeriod = 1.0F / (float) pSampleRate;
+                auto a              = 1.0F / (1 + 2 * (float) M_PI * samplingPeriod * params->cutoffFreq);
 
-            *(float *) *pUsrData = pOut[pBufSize - 1];
-        };
-    }
+                if (!*pUsrData)
+                {
+                    *pUsrData            = new float;
+                    *(float *) *pUsrData = pIn[0];
+                }
 
-    FxParamsHighPassFirstOrder *getParams()
-    {
-        return (FxParamsHighPassFirstOrder *) params;
-    }
+                auto lastState = *(float *) *pUsrData;
+                pOut[0]        = lastState;
 
-    FxId getId() override
-    {
-        return FX_ID_HIPASS_FIRST_ORDER;
-    }
+                for (int i = 1; i < pBufSize; ++i)
+                {
+                    pOut[i] = a * pOut[i - 1] + a * (pIn[i] - pIn[i - 1]);
+                }
 
-    const char *getName() override
-    {
-        return "High pass filter (1st order)";
-    }
+                *(float *) *pUsrData = pOut[pBufSize - 1];
+            };
+        }
 
-    ~FxDescriptorHighPassFilterFirstOrder() override
-    {
-        delete getParams();
-    }
-};
+        FxParamsHighPassFirstOrder *getParams()
+        {
+            return (FxParamsHighPassFirstOrder *) params;
+        }
+
+        FxId getId() override
+        {
+            return FX_ID_HIPASS_FIRST_ORDER;
+        }
+
+        const char *getName() override
+        {
+            return "High pass filter (1st order)";
+        }
+
+        ~FxDescriptorHighPassFilterFirstOrder() override
+        {
+            delete getParams();
+        }
+    };
+}
 
 #endif //FX_XPASS_HPP

@@ -30,6 +30,8 @@ typedef enum
     ERR_ASIO_CH_INFO,
 
     ERR_ASIO_DRV_INIT_COULD_NOT_LOAD_DRIVER = 2000,
+
+    ERR_ASIO_BYPASS = 99000,
 } errCode;
 
 constexpr int  ASIO_CH_NUM                = 4;
@@ -63,7 +65,7 @@ float *gInBuf[2];
 float *gWorkBuf[2];
 float *gOutBuf[2];
 
-std::vector<FxDescriptor *> gFxChain;
+Fx::FxChain gFxChain;
 
 errCode asioInitDrivers()
 {
@@ -103,14 +105,14 @@ void asioDeinitDrivers()
     delete gAsioDrivers;
 }
 
-std::map<int, std::array<void *, 2> >  gFxUsrDataMap;
-std::map<int, std::array<float *, 2> > gFxOutputDataMap;
+std::map<Fx::FxInstanceId, std::array<void *, 2> >  gFxUsrDataMap;
+std::map<Fx::FxInstanceId, std::array<float *, 2> > gFxOutputDataMap;
 
-int gFxInputInstanceId = 0;
+Fx::FxInstanceId gFxInputInstanceId = 0;
 
 void fxDestroyChain()
 {
-    for (auto &fx: gFxChain)
+    for (auto &fx: gFxChain.chain)
     {
         delete[] gFxOutputDataMap[fx->instanceId][0];
         delete[] gFxOutputDataMap[fx->instanceId][1];
@@ -132,7 +134,7 @@ void fxUpdateChainMemory()
     gFxOutputDataMap[gFxInputInstanceId][0] = gInBuf[0];
     gFxOutputDataMap[gFxInputInstanceId][1] = gInBuf[1];
 
-    for (auto &fx: gFxChain)
+    for (auto &fx: gFxChain.chain)
     {
         gFxOutputDataMap[fx->instanceId][0] = new float[gAsioDrvInfEx.actualBufSz];
         gFxOutputDataMap[fx->instanceId][1] = new float[gAsioDrvInfEx.actualBufSz];
@@ -146,15 +148,15 @@ void processChannel(int pCh)
     auto out = gOutBuf[pCh];
     auto in  = gInBuf[pCh];
 
-    auto workIn  = gWorkBuf[pCh];
-    auto workOut = gWorkBuf[!pCh];
+    // auto workIn  = gWorkBuf[pCh];
+    auto workOut = gWorkBuf[pCh];
 
     auto bufSz      = gAsioDrvInfEx.actualBufSz;
     auto sampleRate = gAsioDrvInfEx.sampleRate;
 
-    memcpy(workIn, in, bufSz * sizeof(float));
+    // memcpy(workIn, in, bufSz * sizeof(float));
 
-    for (auto &fx: gFxChain)
+    for (auto &fx: gFxChain.chain)
     {
         void *usrData = nullptr;
         if (gFxUsrDataMap.contains(fx->instanceId))
@@ -162,8 +164,8 @@ void processChannel(int pCh)
             usrData = gFxUsrDataMap[fx->instanceId][pCh];
         }
 
-        fx->processor(workIn, workOut, bufSz, sampleRate, fx->params, &usrData, pCh, &gFxOutputDataMap);
-        memcpy(workIn, workOut, bufSz * sizeof(float));
+        fx->processor(fx->inputs, workOut, bufSz, sampleRate, fx->params, &usrData, pCh, &gFxOutputDataMap);
+        // memcpy(workIn, workOut, bufSz * sizeof(float));
 
         memcpy(gFxOutputDataMap[fx->instanceId][pCh], workOut, sizeof(float) * bufSz);
 
@@ -336,65 +338,102 @@ ASIOTime *asioCbBufSwTimeInf(ASIOTime *pParams, long pDoubleBufIdx, ASIOBool pDi
 
 void testLopassChain()
 {
-    auto lo1                     = new FxDescriptorLowPassFilterFirstOrder();
+    auto lo1                     = new Fx::FxDescriptorLowPassFilterFirstOrder(gFxInputInstanceId);
     lo1->getParams()->cutoffFreq = 2000;
 
-    auto lo2                     = new FxDescriptorLowPassFilterFirstOrder();
+    auto lo2                     = new Fx::FxDescriptorLowPassFilterFirstOrder(lo1->instanceId);
     lo2->getParams()->cutoffFreq = 2000;
 
-    auto lo3                     = new FxDescriptorLowPassFilterFirstOrder();
+    auto lo3                     = new Fx::FxDescriptorLowPassFilterFirstOrder(lo2->instanceId);
     lo3->getParams()->cutoffFreq = 2000;
 
-    gFxChain.push_back((FxDescriptor *) lo1);
-    gFxChain.push_back((FxDescriptor *) lo2);
-    gFxChain.push_back((FxDescriptor *) lo3);
+    gFxChain.chain.push_back((Fx::FxDescriptor *) lo1);
+    gFxChain.chain.push_back((Fx::FxDescriptor *) lo2);
+    gFxChain.chain.push_back((Fx::FxDescriptor *) lo3);
 }
 
 void testHipassChain()
 {
-    auto hi1                     = new FxDescriptorHighPassFilterFirstOrder();
+    auto hi1                     = new Fx::FxDescriptorHighPassFilterFirstOrder(gFxInputInstanceId);
     hi1->getParams()->cutoffFreq = 6000;
 
-    gFxChain.push_back((FxDescriptor *) hi1);
+    gFxChain.chain.push_back((Fx::FxDescriptor *) hi1);
 }
 
 void testHiLoChain()
 {
-    auto lo1                     = new FxDescriptorLowPassFilterFirstOrder();
+    auto lo1                     = new Fx::FxDescriptorLowPassFilterFirstOrder(gFxInputInstanceId);
     lo1->getParams()->cutoffFreq = 8000;
 
-    auto gain1               = new FxDescriptorGain();
+    auto gain1               = new Fx::FxDescriptorGain(lo1->instanceId);
     gain1->getParams()->gain = 2;
 
-    auto gain2               = new FxDescriptorGain();
+    auto gain2               = new Fx::FxDescriptorGain(gain1->instanceId);
     gain2->getParams()->gain = 0.5F;
 
-    auto hi1                     = new FxDescriptorHighPassFilterFirstOrder();
+    auto hi1                     = new Fx::FxDescriptorHighPassFilterFirstOrder(gain2->instanceId);
     hi1->getParams()->cutoffFreq = 1000;
 
-    gFxChain.push_back((FxDescriptor *) lo1);
-    gFxChain.push_back((FxDescriptor *) gain1);
-    gFxChain.push_back((FxDescriptor *) gain2);
-    gFxChain.push_back((FxDescriptor *) hi1);
+    gFxChain.chain.push_back((Fx::FxDescriptor *) lo1);
+    gFxChain.chain.push_back((Fx::FxDescriptor *) gain1);
+    gFxChain.chain.push_back((Fx::FxDescriptor *) gain2);
+    gFxChain.chain.push_back((Fx::FxDescriptor *) hi1);
 }
 
 void testDistorsion()
 {
-    auto hi1    = new FxDescriptorHighPassFilterFirstOrder(4000);
-    auto gain1  = new FxDescriptorGain(800);
-    auto diode1 = new FxDescriptorGenericDiodeCurve(1.05F, 10);
+    auto hi1    = new Fx::FxDescriptorHighPassFilterFirstOrder(4000);
+    auto gain1  = new Fx::FxDescriptorGain(800);
+    auto diode1 = new Fx::FxDescriptorGenericDiodeCurve(gain1->instanceId, 1.05F, 10);
 
     const float DIST    = 0.74F;
-    auto        dryWet1 = new FxDescriptorDryWet(gFxInputInstanceId, diode1->instanceId, DIST, 1.0F);
+    auto        dryWet1 = new Fx::FxDescriptorDryWet(gFxInputInstanceId, diode1->instanceId, DIST, 1.0F);
 
-    gFxChain.push_back(hi1);
-    gFxChain.push_back(gain1);
-    gFxChain.push_back(diode1);
-    gFxChain.push_back(dryWet1);
+    gFxChain.chain.push_back(hi1);
+    gFxChain.chain.push_back(gain1);
+    gFxChain.chain.push_back(diode1);
+    gFxChain.chain.push_back(dryWet1);
+}
+
+void testChainOptimizer()
+{
+    auto b = new Fx::FxDescriptorGain(gFxInputInstanceId);
+    auto d = new Fx::FxDescriptorGain(b->instanceId);
+
+    auto a = new Fx::FxDescriptorSum(gFxInputInstanceId, d->instanceId, 0.5F, 0.5F, 1.0F);
+
+    auto e = new Fx::FxDescriptorGain(a->instanceId);
+    auto f = new Fx::FxDescriptorDryWet(d->instanceId, e->instanceId, 0.78F, 1.0F);
+    auto c = new Fx::FxDescriptorGain(gFxInputInstanceId);
+    auto g = new Fx::FxDescriptorSum(c->instanceId, f->instanceId, 0.5F, 0.5F, 1.0F);
+    auto w = new Fx::FxDescriptorDryWet(e->instanceId, d->instanceId, 0.4F, 1.0F);
+    auto k = new Fx::FxDescriptorDryWet(w->instanceId, g->instanceId, 0.7F, 1.0F);
+
+    gFxChain.chain = {
+        d, b, e, f, c, g, w, k, a
+    };
+
+    gFxChain.optimize();
+
+    gRun = false;
+}
+
+void testChainDeserializer()
+{
+    gFxChain.deserialize("examplepedalscheme.json");
+    gFxChain.serialize("examplepedalscheme-serialized.json");
+    gFxChain.deserialize("examplepedalscheme-serialized.json");
 }
 
 errCode main2()
 {
+    gFxInputInstanceId = rand();
+
+    // testChainOptimizer();
+    // testChainDeserializer();
+    //
+    // return ERR_ASIO_BYPASS;
+
     errCode err = asioInitDrivers();
     if (err != ERR_OK)
     {
@@ -442,8 +481,6 @@ errCode main2()
         }
     }
 
-    gFxInputInstanceId = rand();
-
     gInBuf[0]   = new float[bufSz];
     gInBuf[1]   = new float[bufSz];
     gWorkBuf[0] = new float[bufSz];
@@ -454,7 +491,8 @@ errCode main2()
     // testLopassChain();
     // testHipassChain();
     // testHiLoChain();
-    testDistorsion();
+    // testDistorsion();
+    // testChainOptimizer();
 
     fxUpdateChainMemory();
 
@@ -511,7 +549,10 @@ int main()
 {
     errCode err = main2();
 
-    asioDeinitDrivers();
+    if (err != ERR_ASIO_BYPASS)
+    {
+        asioDeinitDrivers();
+    }
 
     return err;
 }

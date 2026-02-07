@@ -11,137 +11,128 @@
 
 #include <fx/fx.hpp>
 
-// sum
-typedef struct
+namespace Fx
 {
-    int aInstanceId, bInstanceId;
-
-    float weightA, weightB;
-    float outGain;
-} FxParamsSum;
-
-class FxDescriptorSum : public FxDescriptor
-{
-    public:
-    FxDescriptorSum(int pAInstanceId, float pWeightA, int pBInstanceId, float pWeightB, float pOutGain)
+    // sum
+    typedef struct
     {
-        auto par = new FxParamsSum();
+        float weightA, weightB;
+        float outGain;
+    } FxParamsSum;
 
-        par->aInstanceId = pAInstanceId;
-        par->weightA     = pWeightA;
-
-        par->bInstanceId = pBInstanceId;
-        par->weightB     = pWeightB;
-
-        par->outGain = pOutGain;
-
-        params = par;
-
-        processor = [](float *pIn, float *pOut, int pBufSize, int pSampleRate, void *pParams, void **pUsrData, int pCh, std::map<int, std::array<float *, 2> > *pOutputMap)
+    class FxDescriptorSum : public FxDescriptor
+    {
+        public:
+        FxDescriptorSum(int pAInstanceId, int pBInstanceId, float pWeightA, float pWeightB, float pOutGain) : FxDescriptor()
         {
-            auto params = (FxParamsSum *) pParams;
+            inputs = std::vector{pAInstanceId, pBInstanceId};
 
-            auto weightA = params->weightA;
-            auto weightB = params->weightB;
-            auto outGain = params->outGain;
+            auto par = new FxParamsSum();
 
-            auto aInstanceId = params->aInstanceId;
-            auto bInstanceId = params->bInstanceId;
+            par->weightA = pWeightA;
+            par->weightB = pWeightB;
+            par->outGain = pOutGain;
 
-            auto aData = pOutputMap->at(aInstanceId)[pCh];
-            auto bData = pOutputMap->at(bInstanceId)[pCh];
+            params = par;
 
-            for (int i = 0; i < pBufSize; ++i)
+            processor = [](std::vector<FxInstanceId> &pInputs, float *pOut, int pBufSize, int pSampleRate, void *pParams, void **pUsrData, int pCh, std::map<int, std::array<float *, 2> > *pOutputMap)
             {
-                pOut[i] = std::clamp((weightA * aData[i] + weightB * bData[i]) * outGain, -1.0F, 1.0F);
-            }
-        };
-    }
+                auto params = (FxParamsSum *) pParams;
 
-    FxParamsSum *getParams()
-    {
-        return (FxParamsSum *) params;
-    }
+                auto weightA = params->weightA;
+                auto weightB = params->weightB;
+                auto outGain = params->outGain;
 
-    FxId getId() override
-    {
-        return FX_ID_SUM;
-    }
+                auto aData = pOutputMap->at(pInputs[0])[pCh];
+                auto bData = pOutputMap->at(pInputs[1])[pCh];
 
-    const char *getName() override
-    {
-        return "Sum";
-    }
+                for (int i = 0; i < pBufSize; ++i)
+                {
+                    pOut[i] = std::clamp((weightA * aData[i] + weightB * bData[i]) * outGain, -1.0F, 1.0F);
+                }
+            };
+        }
 
-    ~FxDescriptorSum() override
-    {
-        delete getParams();
-    }
-};
-
-// dry/wet
-typedef struct
-{
-    int aInstanceId, bInstanceId;
-
-    float balance;
-    float outGain;
-} FxParamsDryWet;
-
-class FxDescriptorDryWet : public FxDescriptor
-{
-    public:
-    FxDescriptorDryWet(int pAInstanceId, int pBInstanceId, float pBalance, float pOutGain)
-    {
-        auto par = new FxParamsDryWet();
-
-        par->aInstanceId = pAInstanceId;
-        par->bInstanceId = pBInstanceId;
-        par->balance     = pBalance;
-        par->outGain     = pOutGain;
-
-        params = par;
-
-        processor = [](float *pIn, float *pOut, int pBufSize, int pSampleRate, void *pParams, void **pUsrData, int pCh, std::map<int, std::array<float *, 2> > *pOutputMap)
+        FxParamsSum *getParams()
         {
-            auto params = (FxParamsDryWet *) pParams;
+            return (FxParamsSum *) params;
+        }
 
-            auto weightA = 1.0F - params->balance;
-            auto weightB = params->balance;
-            auto outGain = params->outGain;
+        FxId getId() override
+        {
+            return FX_ID_SUM;
+        }
 
-            auto aInstanceId = params->aInstanceId;
-            auto bInstanceId = params->bInstanceId;
+        const char *getName() override
+        {
+            return "Sum";
+        }
 
-            auto aData = pOutputMap->at(aInstanceId)[pCh];
-            auto bData = pOutputMap->at(bInstanceId)[pCh];
+        ~FxDescriptorSum() override
+        {
+            delete getParams();
+        }
+    };
 
-            for (int i = 0; i < pBufSize; ++i)
+    // dry/wet
+    typedef struct
+    {
+        float balance;
+        float outGain;
+    } FxParamsDryWet;
+
+    class FxDescriptorDryWet : public FxDescriptor
+    {
+        public:
+        FxDescriptorDryWet(int pAInstanceId, int pBInstanceId, float pBalance, float pOutGain) : FxDescriptor()
+        {
+            inputs = std::vector{pAInstanceId, pBInstanceId};
+
+            auto par = new FxParamsDryWet();
+
+            par->balance     = pBalance;
+            par->outGain     = pOutGain;
+
+            params = par;
+
+            processor = [](std::vector<FxInstanceId> &pInputs, float *pOut, int pBufSize, int pSampleRate, void *pParams, void **pUsrData, int pCh, std::map<int, std::array<float *, 2> > *pOutputMap)
             {
-                pOut[i] = std::clamp((weightA * aData[i] + weightB * bData[i]) * outGain, -1.0F, 1.0F);
-            }
-        };
-    }
+                auto params = (FxParamsDryWet *) pParams;
 
-    FxParamsDryWet *getParams()
-    {
-        return (FxParamsDryWet *) params;
-    }
+                auto weightA = 1.0F - params->balance;
+                auto weightB = params->balance;
+                auto outGain = params->outGain;
 
-    FxId getId() override
-    {
-        return FX_ID_DRYWET;
-    }
+                auto aData = pOutputMap->at(pInputs[0])[pCh];
+                auto bData = pOutputMap->at(pInputs[1])[pCh];
 
-    const char *getName() override
-    {
-        return "Dry/Wet";
-    }
+                for (int i = 0; i < pBufSize; ++i)
+                {
+                    pOut[i] = std::clamp((weightA * aData[i] + weightB * bData[i]) * outGain, -1.0F, 1.0F);
+                }
+            };
+        }
 
-    ~FxDescriptorDryWet() override
-    {
-        delete getParams();
-    }
-};
+        FxParamsDryWet *getParams()
+        {
+            return (FxParamsDryWet *) params;
+        }
+
+        FxId getId() override
+        {
+            return FX_ID_DRYWET;
+        }
+
+        const char *getName() override
+        {
+            return "Dry/Wet";
+        }
+
+        ~FxDescriptorDryWet() override
+        {
+            delete getParams();
+        }
+    };
+}
 
 #endif //FX_MIX_HPP

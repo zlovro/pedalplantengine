@@ -3,7 +3,7 @@ project(pedalplantengine)
 
 set(CMAKE_CXX_STANDARD 26)
 
-include_directories(ASIOSDK ASIOSDK/common ASIOSDK/host ASIOSDK/host/pc src)
+include_directories(ASIOSDK ASIOSDK/common ASIOSDK/host ASIOSDK/host/pc src include)
 add_executable(pedalplantengine
         src/main.cpp
         ASIOSDK/common/asio.cpp
