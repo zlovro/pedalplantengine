@@ -27,7 +27,7 @@ namespace Fx
 
             params = par;
 
-            processor = [](std::vector<FxInstanceId>& pInputs, float *pOut, int pBufSize, int pSampleRate, void *pParams, void **pUsrData, int pCh, std::map<int, std::array<float *, 2> > *pOutputMap)
+            processor = [](std::vector<FxInstanceId> &pInputs, float *pOut, int pBufSize, int pSampleRate, void *pParams, void **pUsrData, int pCh, std::map<int, std::array<float *, 2> > *pOutputMap)
             {
                 auto pIn = pOutputMap->at(pInputs.at(0))[pCh];
 
@@ -39,6 +39,11 @@ namespace Fx
                     pOut[i] = std::clamp(pIn[i] * gain, -1.0F, 1.0F);
                 }
             };
+        }
+
+        int getExpectedInputCount() override
+        {
+            return 1;
         }
 
         FxParamsGain *getParams()

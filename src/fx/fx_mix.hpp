@@ -53,6 +53,11 @@ namespace Fx
             };
         }
 
+        int getExpectedInputCount() override
+        {
+            return 2;
+        }
+
         FxParamsSum *getParams()
         {
             return (FxParamsSum *) params;
@@ -111,6 +116,11 @@ namespace Fx
                     pOut[i] = std::clamp((weightA * aData[i] + weightB * bData[i]) * outGain, -1.0F, 1.0F);
                 }
             };
+        }
+
+        int getExpectedInputCount() override
+        {
+            return 2;
         }
 
         FxParamsDryWet *getParams()

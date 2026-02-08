@@ -86,7 +86,7 @@ namespace Fx
             auto n = newPoints.size();
 
             // ignore the bezier pyramid first and last row
-            for (int i = 0; i < n - 2; i++)
+            for (int i = 1; i < n - 1; i++)
             {
                 // each rows length is N - 1 - i
                 for (int j = 1; j < n - 1 - i; j++)
@@ -144,6 +144,11 @@ namespace Fx
 
                 params->evalTable[r] = evalBezier(t);
             }
+        }
+
+        int getExpectedInputCount() override
+        {
+            return 1;
         }
 
         FxParamsBezierCurve *getParams()
@@ -213,6 +218,11 @@ namespace Fx
                     pOut[i]  = copysignf(evalTable[idx].y, x);
                 };
             };
+        }
+
+        int getExpectedInputCount() override
+        {
+            return 1;
         }
 
         void setCoefficient(float pCoefficient)

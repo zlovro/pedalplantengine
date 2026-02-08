@@ -55,6 +55,11 @@ namespace Fx
             };
         }
 
+        int getExpectedInputCount() override
+        {
+            return 1;
+        }
+
         FxParamsLowPassFirstOrder *getParams()
         {
             return (FxParamsLowPassFirstOrder *) params;
@@ -117,6 +122,11 @@ namespace Fx
 
                 *(float *) *pUsrData = pOut[pBufSize - 1];
             };
+        }
+
+        int getExpectedInputCount() override
+        {
+            return 1;
         }
 
         FxParamsHighPassFirstOrder *getParams()

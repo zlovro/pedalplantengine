@@ -3,6 +3,11 @@
 #include <queue>
 #include <map>
 
+#include <QApplication>
+#include <QPushButton>
+#include <QMainWindow>
+#include <QStyleFactory>
+
 #include <asiodrivers.h>
 #include <asio.h>
 
@@ -10,10 +15,12 @@
 #include <fx/fx_amplitude.hpp>
 #include <fx/fx_mix.hpp>
 #include <fx/fx_xpass.hpp>
+#include <fx/fx_curve.hpp>
 
 #include <wav.hpp>
 
-#include "fx/fx_curve.hpp"
+#include "fx_gfx.hpp"
+#include "fx_gfx.hpp"
 
 #if WINDOWS
 #define sleepMs(x) Sleep(x)
@@ -108,7 +115,8 @@ void asioDeinitDrivers()
 std::map<Fx::FxInstanceId, std::array<void *, 2> >  gFxUsrDataMap;
 std::map<Fx::FxInstanceId, std::array<float *, 2> > gFxOutputDataMap;
 
-Fx::FxInstanceId gFxInputInstanceId = 0;
+extern Fx::FxInstanceId gFxInputInstanceId  = 0;
+extern Fx::FxInstanceId gFxOutputInstanceId = 0;
 
 void fxDestroyChain()
 {
@@ -425,68 +433,77 @@ void testChainDeserializer()
     gFxChain.deserialize("examplepedalscheme-serialized.json");
 }
 
-errCode main2()
+errCode main2(int argc, char *argv[])
 {
-    gFxInputInstanceId = rand();
+    gFxInputInstanceId  = rand();
+    gFxOutputInstanceId = rand();
 
     // testChainOptimizer();
     // testChainDeserializer();
     //
     // return ERR_ASIO_BYPASS;
 
-    errCode err = asioInitDrivers();
-    if (err != ERR_OK)
+    const bool TEST_GUI = true;
+
+    errCode   err;
+    ASIOError asioErr;
+
+    if (!TEST_GUI)
     {
-        return err;
-    }
+        err = asioInitDrivers();
+        if (err != ERR_OK)
+        {
+            return err;
+        }
 
-    ASIOError asioErr = ASIOInit(&gAsioDrvInfEx.drvInf);
-    if (asioErr != ASE_OK)
-    {
-        return ERR_ASIO_INIT;
-    }
-
-    ASIOGetBufferSize(&gAsioDrvInfEx.mnBufSz, &gAsioDrvInfEx.mxBufSz, &gAsioDrvInfEx.prefferedBufSz, &gAsioDrvInfEx.granularity);
-    ASIOGetChannels(&gAsioDrvInfEx.numInCh, &gAsioDrvInfEx.numOutCh);
-
-    double sr;
-    ASIOGetSampleRate((ASIOSampleRate *) &sr);
-
-    gAsioDrvInfEx.sampleRate = (long) sr;
-
-    ASIOCallbacks asioCbs = {asioCbBufSw, asioCbSampleRateChange, asioCbMsg, asioCbBufSwTimeInf};
-
-    long bufSz                = true ? 64 : gAsioDrvInfEx.prefferedBufSz;
-    gAsioDrvInfEx.actualBufSz = bufSz;
-
-    asioErr = ASIOCreateBuffers(gAsioBufInfos, ASIO_CH_NUM, bufSz, &asioCbs);
-    if (asioErr != ASE_OK)
-    {
-        return ERR_ASIO_CREATE_BUFFERS;
-    }
-
-    for (int i = 0; i < ASIO_CH_NUM; ++i)
-    {
-        auto bufInf = gAsioBufInfos[i];
-
-        gAsioDrvInfEx.chInfos[i] = {
-            .channel = bufInf.channelNum,
-            .isInput = bufInf.isInput,
-        };
-
-        asioErr = ASIOGetChannelInfo(gAsioDrvInfEx.chInfos + i);
+        asioErr = ASIOInit(&gAsioDrvInfEx.drvInf);
         if (asioErr != ASE_OK)
         {
-            return ERR_ASIO_CH_INFO;
+            return ERR_ASIO_INIT;
         }
-    }
 
-    gInBuf[0]   = new float[bufSz];
-    gInBuf[1]   = new float[bufSz];
-    gWorkBuf[0] = new float[bufSz];
-    gWorkBuf[1] = new float[bufSz];
-    gOutBuf[0]  = new float[bufSz];
-    gOutBuf[1]  = new float[bufSz];
+        ASIOGetBufferSize(&gAsioDrvInfEx.mnBufSz, &gAsioDrvInfEx.mxBufSz, &gAsioDrvInfEx.prefferedBufSz, &gAsioDrvInfEx.granularity);
+        ASIOGetChannels(&gAsioDrvInfEx.numInCh, &gAsioDrvInfEx.numOutCh);
+
+        double sr;
+        ASIOGetSampleRate((ASIOSampleRate *) &sr);
+
+        gAsioDrvInfEx.sampleRate = (long) sr;
+
+        ASIOCallbacks asioCbs = {asioCbBufSw, asioCbSampleRateChange, asioCbMsg, asioCbBufSwTimeInf};
+
+        long bufSz                = true ? 64 : gAsioDrvInfEx.prefferedBufSz;
+        gAsioDrvInfEx.actualBufSz = bufSz;
+
+        asioErr = ASIOCreateBuffers(gAsioBufInfos, ASIO_CH_NUM, bufSz, &asioCbs);
+        if (asioErr != ASE_OK)
+        {
+            return ERR_ASIO_CREATE_BUFFERS;
+        }
+
+        for (int i = 0; i < ASIO_CH_NUM; ++i)
+        {
+            auto bufInf = gAsioBufInfos[i];
+
+            gAsioDrvInfEx.chInfos[i] = {
+                .channel = bufInf.channelNum,
+                .isInput = bufInf.isInput,
+            };
+
+            asioErr = ASIOGetChannelInfo(gAsioDrvInfEx.chInfos + i);
+            if (asioErr != ASE_OK)
+            {
+                return ERR_ASIO_CH_INFO;
+            }
+        }
+
+        gInBuf[0]   = new float[bufSz];
+        gInBuf[1]   = new float[bufSz];
+        gWorkBuf[0] = new float[bufSz];
+        gWorkBuf[1] = new float[bufSz];
+        gOutBuf[0]  = new float[bufSz];
+        gOutBuf[1]  = new float[bufSz];
+    }
 
     // testLopassChain();
     // testHipassChain();
@@ -496,15 +513,26 @@ errCode main2()
 
     fxUpdateChainMemory();
 
-    asioErr = ASIOStart();
-    if (asioErr != ASE_OK)
+    if (!TEST_GUI)
     {
-        return ERR_ASIO_START;
+        asioErr = ASIOStart();
+        if (asioErr != ASE_OK)
+        {
+            return ERR_ASIO_START;
+        }
     }
 
+    QApplication qtApp(argc, argv);
+
+    QApplication::setStyle(QStyleFactory::create("Fusion"));
+
+    Fx::Gfx::FxGfxMainWindow mainWindow;
+    mainWindow.show();
+
+    long desiredFrameDurationUs = 1'000'000 / 144;
     while (gRun)
     {
-        sleepMs(100);
+        auto frameStart = std::chrono::high_resolution_clock::now();
 
         #if WINDOWS
         if (GetKeyState(VK_CONTROL) >> 15 && GetKeyState(VK_MENU) >> 15)
@@ -513,10 +541,18 @@ errCode main2()
         }
         #endif
 
+        QApplication::processEvents();
 
         fflush(stdout);
 
-        gTimeMs += 100;
+        while (true)
+        {
+            auto frameDurationUs = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - frameStart).count();
+            if (frameDurationUs >= desiredFrameDurationUs)
+            {
+                break;
+            }
+        }
     }
 
     asioErr = ASIOStop();
@@ -542,17 +578,17 @@ errCode main2()
         delete v[1];
     }
 
-    return ERR_OK;
-}
-
-int main()
-{
-    errCode err = main2();
-
-    if (err != ERR_ASIO_BYPASS)
+    if (!TEST_GUI)
     {
         asioDeinitDrivers();
     }
+
+    return ERR_OK;
+}
+
+int main(int argc, char *argv[])
+{
+    errCode err = main2(argc, argv);
 
     return err;
 }

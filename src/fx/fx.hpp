@@ -47,6 +47,7 @@ namespace Fx
         explicit FxDescriptor(std::vector<FxInstanceId> &pInputs);
         explicit FxDescriptor(FxInstanceId pInput);
 
+        virtual int         getExpectedInputCount() = 0;
         virtual FxId        getId() = 0;
         virtual const char *getName() = 0;
 
@@ -67,10 +68,13 @@ namespace Fx
         bool deserialize(const std::filesystem::path &pFile);
         bool serialize(const std::filesystem::path &pFile);
     };
+
+    extern Fx::FxChain gFxChain;
 }
 
 constexpr Fx::FxInstanceId FX_INVALID_INSTANCE_ID = -1;
 
 extern Fx::FxInstanceId gFxInputInstanceId;
+extern Fx::FxInstanceId gFxOutputInstanceId;
 
 #endif //FX_HPP
