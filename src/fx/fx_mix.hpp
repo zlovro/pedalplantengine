@@ -35,7 +35,7 @@ namespace Fx
 
             params = par;
 
-            processor = [](std::vector<FxInstanceId> &pInputs, float *pOut, int pBufSize, int pSampleRate, void *pParams, void **pUsrData, int pCh, std::map<int, std::array<float *, 2> > *pOutputMap)
+            processor = [](const std::vector<float*>& pInputs, float *pOut, int pBufSz, int pSampleRate, const void *pParams, int pCh)
             {
                 auto params = (FxParamsSum *) pParams;
 
@@ -43,10 +43,10 @@ namespace Fx
                 auto weightB = params->weightB;
                 auto outGain = params->outGain;
 
-                auto aData = pOutputMap->at(pInputs[0])[pCh];
-                auto bData = pOutputMap->at(pInputs[1])[pCh];
+                auto aData = pInputs[0];
+                auto bData = pInputs[1];
 
-                for (int i = 0; i < pBufSize; ++i)
+                for (int i = 0; i < pBufSz; ++i)
                 {
                     pOut[i] = std::clamp((weightA * aData[i] + weightB * bData[i]) * outGain, -1.0F, 1.0F);
                 }
@@ -95,12 +95,12 @@ namespace Fx
 
             auto par = new FxParamsDryWet();
 
-            par->balance     = pBalance;
-            par->outGain     = pOutGain;
+            par->balance = pBalance;
+            par->outGain = pOutGain;
 
             params = par;
 
-            processor = [](std::vector<FxInstanceId> &pInputs, float *pOut, int pBufSize, int pSampleRate, void *pParams, void **pUsrData, int pCh, std::map<int, std::array<float *, 2> > *pOutputMap)
+            processor = [](const std::vector<float*>& pInputs, float *pOut, int pBufSz, int pSampleRate, const void *pParams, int pCh)
             {
                 auto params = (FxParamsDryWet *) pParams;
 
@@ -108,10 +108,10 @@ namespace Fx
                 auto weightB = params->balance;
                 auto outGain = params->outGain;
 
-                auto aData = pOutputMap->at(pInputs[0])[pCh];
-                auto bData = pOutputMap->at(pInputs[1])[pCh];
+                auto aData = pInputs[0];
+                auto bData = pInputs[1];
 
-                for (int i = 0; i < pBufSize; ++i)
+                for (int i = 0; i < pBufSz; ++i)
                 {
                     pOut[i] = std::clamp((weightA * aData[i] + weightB * bData[i]) * outGain, -1.0F, 1.0F);
                 }

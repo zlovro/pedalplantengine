@@ -12,9 +12,18 @@ namespace Fx
 {
     // 1st order lowpass
 
-    typedef struct
+    typedef struct FxParamsLowPassFirstOrder
     {
+        // dont serialize
+        float lastSample;
+
         float cutoffFreq;
+
+        explicit FxParamsLowPassFirstOrder(float pCutoffFreq)
+        {
+            cutoffFreq = pCutoffFreq;
+            lastSample = 0;
+        }
     } FxParamsLowPassFirstOrder;
 
     class FxDescriptorLowPassFilterFirstOrder : public FxDescriptor
@@ -22,14 +31,11 @@ namespace Fx
         public:
         explicit FxDescriptorLowPassFilterFirstOrder(FxInstanceId pInput, float pCutoffFreq = 22000.0F) : FxDescriptor(pInput)
         {
-            auto par        = new FxParamsLowPassFirstOrder();
-            par->cutoffFreq = pCutoffFreq;
+            params = new FxParamsLowPassFirstOrder(pCutoffFreq);
 
-            params = par;
-
-            processor = [](std::vector<FxInstanceId> &pInputs, float *pOut, int pBufSize, int pSampleRate, void *pParams, void **pUsrData, int pCh, std::map<int, std::array<float *, 2> > *pOutputMap)
+            processor = [](const std::vector<float*>& pInputs, float *pOut, int pBufSz, int pSampleRate, const void *pParams, int pCh)
             {
-                auto pIn = pOutputMap->at(pInputs[0])[pCh];
+                auto pIn = pInputs[0];
 
                 auto params = (FxParamsLowPassFirstOrder *) pParams;
 
@@ -37,21 +43,14 @@ namespace Fx
                 auto b              = 2 * (float) M_PI * samplingPeriod * params->cutoffFreq;
                 auto a              = b / (b + 1);
 
-                if (!*pUsrData)
-                {
-                    *pUsrData            = new float;
-                    *(float *) *pUsrData = pIn[0];
-                }
+                pOut[0] = a * pIn[0] + (1 - a) * params->lastSample;
 
-                auto lastState = *(float *) *pUsrData;
-                pOut[0]        = a * pIn[0] + (1 - a) * lastState;
-
-                for (int i = 1; i < pBufSize; ++i)
+                for (int i = 1; i < pBufSz; ++i)
                 {
                     pOut[i] = a * pIn[i] + (1 - a) * pOut[i - 1];
                 }
 
-                *(float *) *pUsrData = pOut[pBufSize - 1];
+                params->lastSample = pOut[pBufSz - 1];
             };
         }
 
@@ -82,9 +81,18 @@ namespace Fx
     };
 
     // 1st order hipass
-    typedef struct
+    typedef struct FxParamsHighPassFirstOrder
     {
+        // dont serialize
+        float lastSample;
+
         float cutoffFreq;
+
+        explicit FxParamsHighPassFirstOrder(float pCutoff)
+        {
+            lastSample = 0;
+            cutoffFreq = pCutoff;
+        }
     } FxParamsHighPassFirstOrder;
 
     class FxDescriptorHighPassFilterFirstOrder : public FxDescriptor
@@ -92,35 +100,25 @@ namespace Fx
         public:
         explicit FxDescriptorHighPassFilterFirstOrder(FxInstanceId pInput, float pCutoffFreq = 22000.0F) : FxDescriptor(pInput)
         {
-            auto par        = new FxParamsHighPassFirstOrder();
-            par->cutoffFreq = pCutoffFreq;
+            params = new FxParamsHighPassFirstOrder(pCutoffFreq);
 
-            params = par;
-
-            processor = [](std::vector<FxInstanceId> &pInputs, float *pOut, int pBufSize, int pSampleRate, void *pParams, void **pUsrData, int pCh, std::map<int, std::array<float *, 2> > *pOutputMap)
+            processor = [](const std::vector<float*>& pInputs, float *pOut, int pBufSz, int pSampleRate, const void *pParams, int pCh)
             {
-                auto pIn = pOutputMap->at(pInputs[0])[pCh];
+                auto pIn = pInputs[0];
 
                 auto params = (FxParamsHighPassFirstOrder *) pParams;
 
                 auto samplingPeriod = 1.0F / (float) pSampleRate;
                 auto a              = 1.0F / (1 + 2 * (float) M_PI * samplingPeriod * params->cutoffFreq);
 
-                if (!*pUsrData)
-                {
-                    *pUsrData            = new float;
-                    *(float *) *pUsrData = pIn[0];
-                }
+                pOut[0] = params->lastSample;
 
-                auto lastState = *(float *) *pUsrData;
-                pOut[0]        = lastState;
-
-                for (int i = 1; i < pBufSize; ++i)
+                for (int i = 1; i < pBufSz; ++i)
                 {
                     pOut[i] = a * pOut[i - 1] + a * (pIn[i] - pIn[i - 1]);
                 }
 
-                *(float *) *pUsrData = pOut[pBufSize - 1];
+                params->lastSample = pOut[pBufSz - 1];
             };
         }
 

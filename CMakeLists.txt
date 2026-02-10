@@ -34,6 +34,7 @@ add_executable(pedalplantengine
         src/fx_gfx.hpp
         src/fx/widgets/fx_widgets_amplitude.cpp
         src/fx/widgets/fx_widgets_amplitude.hpp
+        src/main.hpp
         #        ASIOSDK/host/sample/hostsample.cpp
 )
 

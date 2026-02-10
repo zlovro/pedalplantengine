@@ -23,30 +23,46 @@ using json = nlohmann::json;
 
 namespace Fx
 {
-    FxDescriptor::FxDescriptor(): inputs()
+    FxChain      gFxChain = FxChain();
+    FxInstanceId gFxInputInstanceId;
+
+    void init()
+    {
+        gFxInputInstanceId = rand();
+    }
+
+    FxDescriptor::FxDescriptor()
     {
         instanceId = rand();
+
+        inputs = std::vector<FxInstanceId>();
+
+        lastOutput    = std::array<float *, 2>();
+        lastOutput[0] = nullptr;
+        lastOutput[1] = nullptr;
 
         processor = nullptr;
         params    = nullptr;
     }
 
-    FxDescriptor::FxDescriptor(std::vector<FxInstanceId> &pInputs): inputs(pInputs)
+    FxDescriptor::FxDescriptor(const std::vector<FxInstanceId> &pInputs) : FxDescriptor()
     {
-        instanceId = rand();
-
-        processor = nullptr;
-        params    = nullptr;
+        inputs = pInputs;
     }
 
-    FxDescriptor::FxDescriptor(FxInstanceId pInput) : inputs()
+    FxDescriptor::FxDescriptor(FxInstanceId pInput) : FxDescriptor(std::vector{pInput})
     {
-        inputs = std::vector{pInput};
+    }
 
-        instanceId = rand();
+    void FxDescriptor::refreshBuffers() const
+    {
+        if (instanceId == gFxInputInstanceId)
+        {
+            return;
+        }
 
-        processor = nullptr;
-        params    = nullptr;
+        delete[] lastOutput[0];
+        delete[] lastOutput[1];
     }
 
     FxId FxDescriptor::getId()
@@ -61,6 +77,14 @@ namespace Fx
 
     FxChain::FxChain()
     {
+        chain       = std::vector<FxDescriptor *>();
+        fxIdToFxMap = std::map<FxInstanceId, FxDescriptor *>();
+    }
+
+    void FxChain::addFxNoOptimize(FxDescriptor *pFx)
+    {
+        chain.push_back(pFx);
+        fxIdToFxMap[pFx->instanceId] = pFx;
     }
 
     void FxChain::optimize()

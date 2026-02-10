@@ -10,13 +10,15 @@
 #include <QTextItem>
 #include <QWidget>
 #include <QMouseEvent>
-
-#include "fx_gfx.hpp"
-
-#include <cmath>
 #include <QApplication>
 
+#include <cmath>
+#include <set>
+
 #include "fx/widgets/fx_widgets_amplitude.hpp"
+#include "fx_gfx.hpp"
+
+#include <ranges>
 
 namespace Fx::Gfx
 {
@@ -28,13 +30,13 @@ namespace Fx::Gfx
     const QFont FX_BOLD_FONT(FX_FONT_FAMILY, FX_FONT_SIZE, QFont::Bold);
     const QFont FX_BOLD_FONT_SMALL(FX_FONT_FAMILY, FX_FONT_SIZE_SMALL, QFont::Bold);
 
-    extern const QColor FX_WIDGET_FILL_COLOR(140, 140, 140, 140);
+    extern const QColor FX_WIDGET_FILL_COLOR(140, 140, 140, 255);
 
     extern const QColor FX_WIDGET_OUTLINE_COLOR(0, 0, 0);
     extern const int    FX_WIDGET_OUTLINE_RADIUS = 7;
     extern const int    FX_WIDGET_OUTLINE_WIDTH  = 7;
 
-    extern const QColor FX_WIDGET_UNCONNECTED_POINT_COLOR(255, 0, 0, 170);
+    extern const QColor FX_WIDGET_UNCONNECTED_POINT_COLOR(255, 0, 0, 255);
     extern const QColor FX_WIDGET_CONNECTED_INPUT_COLOR(0, 240, 0, 120);
     extern const QColor FX_WIDGET_CONNECTED_OUTPUT_COLOR(0, 0, 240, 120);
     extern const QColor FX_WIDGET_IGNORE_POINT_COLOR(120, 120, 120, 120);
@@ -47,9 +49,8 @@ namespace Fx::Gfx
 
     FxGfxMainWindow::FxGfxMainWindow() : QMainWindow()
     {
-        drawingConnectorFx         = FX_INVALID_INSTANCE_ID;
-        drawingTargetConnectorType = FxGfxFxWidget::CONN_UNCONNECTED;
-        isDrawing                  = false;
+        isDrawing              = false;
+        drawingOriginConnector = nullptr;
 
         resize(1280, 720);
 
@@ -65,22 +66,90 @@ namespace Fx::Gfx
         setMouseTracking(true);
     }
 
-    void FxGfxMainWindow::startDrawing(const FxGfxFxWidget::ConnectorPoint &pSourceConnector, const QPen &pPen, FxGfxFxWidget::ConnectorType pTargetConnector)
+    FxGfxMainWindow::~FxGfxMainWindow()
     {
-        isDrawing                  = true;
-        drawingOrigin              = pSourceConnector.rect.center();
-        drawingConnectorFx         = pSourceConnector.origin;
-        drawingPen                 = pPen;
-        drawingTargetConnectorType = pTargetConnector;
+        std::set<ConnectingLine *> deleted;
+
+        for (auto &v: connectingLinesMap | std::views::values)
+        {
+            for (auto &x: v)
+            {
+                if (!deleted.contains(x))
+                {
+                    delete x;
+                    deleted.emplace(x);
+                }
+            }
+        }
+    }
+
+    void FxGfxMainWindow::startDrawing(FxGfxFxWidget::ConnectorPoint *pSourceConnector, const QPen &pPen)
+    {
+        isDrawing              = true;
+        drawingOriginConnector = pSourceConnector;
+        drawingPen             = pPen;
 
         drawingPen.setCapStyle(Qt::RoundCap);
     }
 
     void FxGfxMainWindow::cancelDrawing()
     {
-        isDrawing          = false;
-        drawingConnectorFx = FX_INVALID_INSTANCE_ID;
+        isDrawing              = false;
+        drawingOriginConnector = nullptr;
         update();
+    }
+
+    bool FxGfxMainWindow::canConnectFx(FxGfxFxWidget::ConnectorPoint &pSrc, FxGfxFxWidget::ConnectorPoint &pDst)
+    {
+        bool srcAsIn = pSrc.type == FxGfxFxWidget::CONN_INPUT && pDst.type == FxGfxFxWidget::CONN_OUTPUT;
+        bool dstAsIn = pSrc.type == FxGfxFxWidget::CONN_OUTPUT && pDst.type == FxGfxFxWidget::CONN_INPUT;
+        if (srcAsIn || dstAsIn)
+        {
+            if (srcAsIn && pSrc.origin != FX_INVALID_INSTANCE_ID)
+            {
+                return false;
+            }
+
+            if (dstAsIn && pDst.origin != FX_INVALID_INSTANCE_ID)
+            {
+                return false;
+            }
+
+            bool exists = false;
+            if (connectingLinesMap.contains(pSrc.origin))
+            {
+                for (auto &c: connectingLinesMap[pSrc.origin])
+                {
+                    if ((c->fxA == pDst.origin && c->fxB == pSrc.origin) || (c->fxA == pSrc.origin && c->fxB == pDst.origin))
+                    {
+                        exists = true;
+                        break;
+                    }
+                }
+            }
+
+            return !exists;
+        }
+
+        return false;
+    }
+
+    void FxGfxMainWindow::connectFx(FxGfxFxWidget::ConnectorPoint *pSrc, FxGfxFxWidget::ConnectorPoint *pDst)
+    {
+        auto line = new ConnectingLine{pSrc->globalRect.center(), pDst->globalRect.center(), pSrc->origin, pDst->origin};
+
+        if (pSrc->type == FxGfxFxWidget::CONN_INPUT)
+        {
+            pSrc->origin = pDst->origin;
+        }
+        else
+        {
+            pDst->origin = pSrc->origin;
+        }
+
+        connectingLinesMap[pSrc->origin].push_back(line);
+
+        isDrawing = false;
     }
 
     QPoint FxGfxMainWindow::getCenter()
@@ -90,18 +159,19 @@ namespace Fx::Gfx
 
     // rendering, gfx, gui code
 
-    FxGfxFxWidget::FxGfxFxWidget(FxGfxMainWindow *pParent) : connectors()
+    FxGfxFxWidget::FxGfxFxWidget(FxGfxMainWindow *pParent)
     {
         setParent(pParent);
-        stackUnder(pParent);
 
         this->setContextMenuPolicy(Qt::CustomContextMenu);
         connect(this, customContextMenuRequested, this, showCtxMenu);
 
         justAdded           = true;
+        widgetType          = WIDGET_REGULAR;
         wndParent           = pParent;
         currentConnectorIdx = -1;
         fxDsc               = nullptr;
+        connectors          = std::array<ConnectorPoint, 4>();
 
         for (auto &connector: connectors)
         {
@@ -125,9 +195,28 @@ namespace Fx::Gfx
 
         auto painter = QPainter(this);
 
+        std::set<ConnectingLine *> lines;
+        for (auto &v: connectingLinesMap | std::views::values)
+        {
+            for (auto &x: v)
+            {
+                if (!lines.contains(x))
+                {
+                    auto p1 = x->a;
+                    auto p4 = x->b;
+                    auto p3 = QPoint{(p1.x() + p4.x()) / 2, p4.y()};
+                    auto p2 = QPoint{p3.x(), p1.y()};
+
+                    drawBezier(painter, std::vector{p1, p2, p3, p4}, drawingPen);
+
+                    lines.emplace(x);
+                }
+            }
+        }
+
         if (isDrawing)
         {
-            auto p1 = drawingOrigin;
+            auto p1 = drawingOriginConnector->globalRect.center();
             auto p4 = mapFromGlobal(QCursor::pos());
             auto p3 = QPoint{(p1.x() + p4.x()) / 2, p4.y()};
             auto p2 = QPoint{p3.x(), p1.y()};
@@ -224,14 +313,14 @@ namespace Fx::Gfx
             auto type = connectors[currentConnectorIdx].type;
 
             auto actionInput = contextMenu.addAction("Input");
-            actionInput->setEnabled(fxDsc);
+            actionInput->setEnabled(widgetType != WIDGET_INPUT);
             actionInput->setCheckable(true);
             actionInput->setChecked(type == CONN_INPUT);
             connect(actionInput, QAction::triggered, this, onCtxMenuItemChecked);
             actionGroup.addAction(actionInput);
 
             auto actionOutput = contextMenu.addAction("Output");
-            actionInput->setEnabled(fxDsc)
+            actionOutput->setEnabled(widgetType != WIDGET_OUTPUT);
             actionOutput->setCheckable(true);
             actionOutput->setChecked(type == CONN_OUTPUT);
             connect(actionOutput, QAction::triggered, this, onCtxMenuItemChecked);
@@ -272,9 +361,27 @@ namespace Fx::Gfx
             {
                 type = CONN_UNCONNECTED;
             }
+
+            if (type == CONN_INPUT)
+            {
+                connectors[currentConnectorIdx].origin = FX_INVALID_INSTANCE_ID;
+            }
+            else
+            {
+                if (widgetType == WIDGET_INPUT)
+                {
+                    connectors[currentConnectorIdx].origin = gFxInputInstanceId;
+                }
+                else
+                {
+                    connectors[currentConnectorIdx].origin = fxDsc->instanceId;
+                }
+            }
+            break;
         }
 
-        if (type == CONN_INPUT)
+        // fxDsc will be null when widget is IN or OUT
+        if (type == CONN_INPUT && fxDsc)
         {
             for (int i = 0, inputCount = 1; i < 4; ++i)
             {
@@ -288,7 +395,6 @@ namespace Fx::Gfx
                     inputCount++;
                 }
 
-                // fxDsc will never be null, the only time fxDsc can be null is if the widget type is input which has no inputs
                 if (inputCount > fxDsc->getExpectedInputCount())
                 {
                     connectors[i].disconnect();
@@ -309,16 +415,33 @@ namespace Fx::Gfx
         auto cy = height() / 2;
 
         // top centre
-        connectors[0].rect = {cx - FX_WIDGET_CONNECTOR_RADIUS_SIDES, 0, FX_WIDGET_CONNECTOR_RADIUS_SIDES * 2, FX_WIDGET_CONNECTOR_RADIUS_VERTICAL};
+        connectors[0].localRect = {cx - FX_WIDGET_CONNECTOR_RADIUS_SIDES, 0, FX_WIDGET_CONNECTOR_RADIUS_SIDES * 2, FX_WIDGET_CONNECTOR_RADIUS_VERTICAL};
 
         // bottom centre
-        connectors[1].rect = {cx - FX_WIDGET_CONNECTOR_RADIUS_SIDES, height() - FX_WIDGET_CONNECTOR_RADIUS_VERTICAL, FX_WIDGET_CONNECTOR_RADIUS_SIDES * 2, FX_WIDGET_CONNECTOR_RADIUS_VERTICAL};
+        connectors[1].localRect = {cx - FX_WIDGET_CONNECTOR_RADIUS_SIDES, height() - FX_WIDGET_CONNECTOR_RADIUS_VERTICAL, FX_WIDGET_CONNECTOR_RADIUS_SIDES * 2, FX_WIDGET_CONNECTOR_RADIUS_VERTICAL};
 
         // right centre
-        connectors[2].rect = {width() - FX_WIDGET_CONNECTOR_RADIUS_VERTICAL, cy - FX_WIDGET_CONNECTOR_RADIUS_SIDES, FX_WIDGET_CONNECTOR_RADIUS_VERTICAL, FX_WIDGET_CONNECTOR_RADIUS_SIDES * 2};
+        connectors[2].localRect = {width() - FX_WIDGET_CONNECTOR_RADIUS_VERTICAL, cy - FX_WIDGET_CONNECTOR_RADIUS_SIDES, FX_WIDGET_CONNECTOR_RADIUS_VERTICAL, FX_WIDGET_CONNECTOR_RADIUS_SIDES * 2};
 
         // left centre
-        connectors[3].rect = {0, cy - FX_WIDGET_CONNECTOR_RADIUS_SIDES, FX_WIDGET_CONNECTOR_RADIUS_VERTICAL, FX_WIDGET_CONNECTOR_RADIUS_SIDES * 2};
+        connectors[3].localRect = {0, cy - FX_WIDGET_CONNECTOR_RADIUS_SIDES, FX_WIDGET_CONNECTOR_RADIUS_VERTICAL, FX_WIDGET_CONNECTOR_RADIUS_SIDES * 2};
+
+        updateConnectorPositions();
+    }
+
+    void FxGfxFxWidget::moveEvent(QMoveEvent *event)
+    {
+        QWidget::moveEvent(event);
+
+        updateConnectorPositions();
+    }
+
+    void FxGfxFxWidget::updateConnectorPositions()
+    {
+        for (auto &conn: connectors)
+        {
+            conn.globalRect = QRect{mapToParent(conn.localRect.topLeft()), conn.localRect.size()};
+        }
     }
 
     void FxGfxFxWidget::paintEvent(QPaintEvent *event)
@@ -360,11 +483,11 @@ namespace Fx::Gfx
             }
 
             painter.setBrush(color);
-            painter.drawRoundedRect(conn.rect, FX_WIDGET_CONNECTOR_RADIUS_BORDER, FX_WIDGET_CONNECTOR_RADIUS_BORDER);
+            painter.drawRoundedRect(conn.localRect, FX_WIDGET_CONNECTOR_RADIUS_BORDER, FX_WIDGET_CONNECTOR_RADIUS_BORDER);
 
             painter.setBrush(Qt::black);
             painter.setFont(FX_BOLD_FONT);
-            painter.drawText(conn.rect, Qt::AlignCenter, text);
+            painter.drawText(conn.localRect, Qt::AlignCenter, text);
         }
 
         painter.setBrush(Qt::black);
@@ -397,7 +520,7 @@ namespace Fx::Gfx
             int i = 0;
             for (auto &conn: connectors)
             {
-                if (conn.rect.contains(cursorLocal))
+                if (conn.localRect.contains(cursorLocal))
                 {
                     currentConnectorIdx = i;
 
@@ -429,18 +552,19 @@ namespace Fx::Gfx
         auto isRightClick = event->button() == Qt::RightButton;
 
         auto hoveringOverConnector = currentConnectorIdx != -1;
-        auto type                  = hoveringOverConnector ? connectors[currentConnectorIdx].type : -1;
 
-        if (wndParent->isDrawing && isLeftClick && hoveringOverConnector && type == wndParent->drawingTargetConnectorType)
+        if (wndParent->isDrawing && isLeftClick && hoveringOverConnector && wndParent->canConnectFx(*wndParent->drawingOriginConnector, connectors[currentConnectorIdx]))
         {
-            connectors[currentConnectorIdx].origin = wndParent->drawingConnectorFx;
+            wndParent->connectFx(wndParent->drawingOriginConnector, &connectors[currentConnectorIdx]);
         }
-
-        bool ctxMenuOpen = findChild<QMenu *>();
-        if (!ctxMenuOpen && isLeftClick && currentConnectorIdx != -1 && connectors[currentConnectorIdx].type != CONN_UNCONNECTED)
+        else
         {
-            wndParent->startDrawing(connectors[currentConnectorIdx], QPen(Qt::black, 3), connectors[currentConnectorIdx].type == CONN_INPUT ? CONN_OUTPUT : CONN_INPUT);
-            return;
+            bool ctxMenuOpen = findChild<QMenu *>();
+            if (!ctxMenuOpen && isLeftClick && currentConnectorIdx != -1 && connectors[currentConnectorIdx].type != CONN_UNCONNECTED)
+            {
+                wndParent->startDrawing(&connectors[currentConnectorIdx], QPen(Qt::black, 3));
+                return;
+            }
         }
 
         mLastMousePos = event->globalPos();
@@ -479,8 +603,14 @@ namespace Fx::Gfx
     FxGfxFxWidgetInput::FxGfxFxWidgetInput(FxGfxMainWindow *pParent): FxGfxFxWidget(pParent)
     {
         setCursor(Qt::ArrowCursor);
-        justAdded = false;
+        widgetType = WIDGET_INPUT;
+        justAdded  = false;
         moveToCentre();
+
+        for (auto &x: connectors)
+        {
+            x.origin = gFxInputInstanceId;
+        }
     }
 
     void FxGfxFxWidgetInput::render(QPainter &pPainter)
@@ -496,9 +626,15 @@ namespace Fx::Gfx
     FxGfxFxWidgetOutput::FxGfxFxWidgetOutput(FxGfxMainWindow *pParent) : FxGfxFxWidget(pParent)
     {
         setCursor(Qt::ArrowCursor);
-        justAdded = false;
+        widgetType = WIDGET_OUTPUT;
+        justAdded  = false;
         moveToCentre();
         move(x() + FX_WIDGET_DEFAULT_WIDTH * 3, y());
+
+        for (auto &x: connectors)
+        {
+            x.origin = FX_INVALID_INSTANCE_ID;
+        }
     }
 
     void FxGfxFxWidgetOutput::render(QPainter &pPainter)

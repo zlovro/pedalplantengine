@@ -47,16 +47,16 @@ namespace Fx
 
             params = par;
 
-            processor = [](std::vector<FxInstanceId> &pInputs, float *pOut, int pBufSize, int pSampleRate, void *pParams, void **pUsrData, int pCh, std::map<int, std::array<float *, 2> > *pOutputMap)
+            processor = [](const std::vector<float*>& pInputs, float *pOut, int pBufSz, int pSampleRate, const void *pParams, int pCh)
             {
-                auto pIn = pOutputMap->at(pInputs[0])[pCh];
+                auto pIn = pInputs[0];
 
                 auto params      = (FxParamsBezierCurve *) pParams;
                 auto evalTable   = params->evalTable;
                 auto resolution  = params->resolution;
                 auto fResolution = (float) resolution;
 
-                for (int i = 0; i < pBufSize; ++i)
+                for (int i = 0; i < pBufSz; ++i)
                 {
                     auto x   = pIn[i];
                     auto idx = (int) std::round(std::abs(x) * fResolution);
@@ -202,16 +202,16 @@ namespace Fx
 
             params = par;
 
-            processor = [](std::vector<FxInstanceId> &pInputs, float *pOut, int pBufSize, int pSampleRate, void *pParams, void **pUsrData, int pCh, std::map<int, std::array<float *, 2> > *pOutputMap)
+            processor = [](const std::vector<float*>& pInputs, float *pOut, int pBufSz, int pSampleRate, const void *pParams, int pCh)
             {
-                auto pIn = pOutputMap->at(pInputs[0])[pCh];
+                auto pIn = pInputs[0];
 
                 auto params      = (FxParamsGenericDiodeCurve *) pParams;
                 auto evalTable   = params->evalTable;
                 auto resolution  = params->resolution;
                 auto fResolution = (float) resolution;
 
-                for (int i = 0; i < pBufSize; ++i)
+                for (int i = 0; i < pBufSz; ++i)
                 {
                     auto x   = pIn[i];
                     auto idx = (int) std::round(std::abs(x) * fResolution);

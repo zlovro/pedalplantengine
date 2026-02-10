@@ -32,20 +32,23 @@ namespace Fx
     } FxId;
 
     typedef int    FxInstanceId;
-    typedef void (*FxProcessor)(std::vector<FxInstanceId> &pInputs, float *pOut, int pBufSz, int pSampleRate, void *pParams, void **pUsrData, int pCh, std::map<int, std::array<float *, 2> > *pOutputMap);
+    typedef void (*FxProcessor)(const std::vector<float*>& pInputs, float *pOut, int pBufSz, int pSampleRate, const void *pParams, int pCh);
 
     class FxDescriptor
     {
         public:
-        // usrData, if unused, must be nullptr, if used, must be allocated with new (NOT new[]!) and the underlying type should not have any destructors
-        FxProcessor               processor{};
-        void *                    params{};
-        FxInstanceId              instanceId{};
+        // pInputs - array of float pointers.
+        FxProcessor               processor;
+        void *                    params;
+        FxInstanceId              instanceId;
         std::vector<FxInstanceId> inputs;
+        std::array<float *, 2>    lastOutput;
 
         FxDescriptor();
-        explicit FxDescriptor(std::vector<FxInstanceId> &pInputs);
+        explicit FxDescriptor(const std::vector<FxInstanceId> &pInputs);
         explicit FxDescriptor(FxInstanceId pInput);
+
+        void refreshBuffers() const;
 
         virtual int         getExpectedInputCount() = 0;
         virtual FxId        getId() = 0;
@@ -58,9 +61,16 @@ namespace Fx
     class FxChain
     {
         public:
+        // dont add or remove from this list - only use it for iteration
         std::vector<FxDescriptor *> chain;
 
+        // dont add or remove from this map - only use it for iteration
+        std::map<FxInstanceId, FxDescriptor *> fxIdToFxMap;
+
         FxChain();
+
+        // adds an element to the chain without calling optimize(). useful for multiple adds
+        void addFxNoOptimize(FxDescriptor *pFx);
 
         // should (or must) be called before processing (preferably after adding/removing/inserting/changing chain). organizes the chain such that no element tries to capture output from an unprocessed fx
         void optimize();
@@ -69,12 +79,14 @@ namespace Fx
         bool serialize(const std::filesystem::path &pFile);
     };
 
-    extern Fx::FxChain gFxChain;
+    extern FxChain gFxChain;
+
+    inline constexpr FxInstanceId FX_INVALID_INSTANCE_ID = -1;
+
+    extern FxInstanceId gFxInputInstanceId;
+
+    void init();
 }
 
-constexpr Fx::FxInstanceId FX_INVALID_INSTANCE_ID = -1;
-
-extern Fx::FxInstanceId gFxInputInstanceId;
-extern Fx::FxInstanceId gFxOutputInstanceId;
 
 #endif //FX_HPP
