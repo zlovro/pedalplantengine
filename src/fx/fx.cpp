@@ -16,6 +16,7 @@
 
 #include "fx_amplitude.hpp"
 #include "fx_curve.hpp"
+#include "fx_gfx.hpp"
 #include "fx_mix.hpp"
 #include "fx_xpass.hpp"
 
@@ -37,9 +38,8 @@ namespace Fx
 
         inputs = std::vector<FxInstanceId>();
 
-        lastOutput    = std::array<float *, 2>();
-        lastOutput[0] = nullptr;
-        lastOutput[1] = nullptr;
+        lastOutput = std::array<float *, 2>();
+        refreshBuffers();
 
         processor = nullptr;
         params    = nullptr;
@@ -54,7 +54,7 @@ namespace Fx
     {
     }
 
-    void FxDescriptor::refreshBuffers() const
+    void FxDescriptor::refreshBuffers()
     {
         if (instanceId == gFxInputInstanceId)
         {
@@ -63,6 +63,9 @@ namespace Fx
 
         delete[] lastOutput[0];
         delete[] lastOutput[1];
+
+        lastOutput[0] = new float[gAsioDrvInfEx.actualBufSz];
+        lastOutput[1] = new float[gAsioDrvInfEx.actualBufSz];
     }
 
     FxId FxDescriptor::getId()
@@ -77,13 +80,14 @@ namespace Fx
 
     FxChain::FxChain()
     {
-        chain       = std::vector<FxDescriptor *>();
+        chainBack   = std::vector<FxDescriptor *>();
+        chainFront  = std::vector<FxDescriptor *>();
         fxIdToFxMap = std::map<FxInstanceId, FxDescriptor *>();
     }
 
     void FxChain::addFxNoOptimize(FxDescriptor *pFx)
     {
-        chain.push_back(pFx);
+        chainBack.push_back(pFx);
         fxIdToFxMap[pFx->instanceId] = pFx;
     }
 
@@ -91,19 +95,127 @@ namespace Fx
     {
         std::map<FxInstanceId, FxDescriptor *> idToInstanceMap;
 
+        for (auto &fx: chainBack)
+        {
+            idToInstanceMap[fx->instanceId] = fx;
+        }
+
+        // remove leaf nodes
+        FxInstanceId out = FX_INVALID_INSTANCE_ID;
+        for (const auto &x: Gfx::FxGfxFxWidgetOutput::instance->connectors)
+        {
+            if (x.type == Gfx::FxGfxFxWidget::CONN_INPUT)
+            {
+                out = x.origin;
+                break;
+            }
+        }
+
+        if (out == FX_INVALID_INSTANCE_ID)
+        {
+            return;
+        }
+
+        std::deque<FxInstanceId> q;
+        std::set<FxInstanceId>   explored;
+
+        auto currentRoot = out;
+
+        while (true)
+        {
+            auto parents = currentRoot == gFxInputInstanceId ? std::vector<FxInstanceId>{} : idToInstanceMap[currentRoot]->inputs;
+
+            auto allParentsExplored = true;
+            for (const auto &p: parents)
+            {
+                if (!explored.contains(p))
+                {
+                    allParentsExplored = false;
+                }
+            }
+
+            if (parents.empty() || allParentsExplored)
+            {
+                if (q.empty())
+                {
+                    goto leafDone;
+                }
+
+                currentRoot = q.front();
+                q.pop_front();
+                explored.emplace(currentRoot);
+
+                continue;
+            }
+
+            for (const auto &p: parents)
+            {
+                if (!explored.contains(p))
+                {
+                    currentRoot = p;
+
+                    for (const auto &p2: parents)
+                    {
+                        if (p2 != p && !explored.contains(p2))
+                        {
+                            q.push_back(p2);
+                        }
+                    }
+
+                    explored.emplace(currentRoot);
+                    if (auto y = std::ranges::find(q, currentRoot); y != q.end())
+                    {
+                        q.erase(y);
+                    }
+
+                    break;
+                }
+            }
+        }
+
+    leafDone:
+
+        if (!explored.contains(gFxInputInstanceId))
+        {
+            return;
+        }
+
+        explored.emplace(out);
+
+        erase_if(chainBack, [explored](const FxDescriptor *pDsc)
+        {
+            return !explored.contains(pDsc->instanceId);
+        });
+
+        erase_if(gFxChain.fxIdToFxMap, [this](const std::pair<const int, FxDescriptor *> &pX)
+        {
+            auto found = false;
+            for (const auto &x: chainBack)
+            {
+                if (x->instanceId == pX.first)
+                {
+                    found = true;
+                    break;
+                }
+            }
+
+            return !found;
+        });
+
         // topological sort setup
 
         std::vector<FxInstanceId> tasks;
-        tasks.reserve(chain.size());
+        tasks.reserve(chainBack.size());
+
+        chainFront = std::vector<FxDescriptor *>(chainBack.size(), nullptr);
 
         std::set<std::pair<FxInstanceId, FxInstanceId> > dependencies;
 
-        for (auto &fx: chain)
+        for (auto &fx: chainBack)
         {
             auto instanceId = fx->instanceId;
 
             tasks.push_back(instanceId);
-            idToInstanceMap[instanceId] = fx;
 
             for (auto &input: fx->inputs)
             {
@@ -154,10 +266,28 @@ namespace Fx
         // the first element will always be gFxInputInstanceId, it is unnecessary
         result.pop_front();
 
+        chainBack.clear();
+        fxIdToFxMap.clear();
+
         auto i = 0;
         for (auto &instanceId: result)
         {
-            chain[i++] = idToInstanceMap[instanceId];
+            auto fx = idToInstanceMap[instanceId];
+            addFxNoOptimize(fx);
+            chainFront[i++] = idToInstanceMap[instanceId];
+        }
+    }
+
+    void FxChain::copyBackChainToFrontOptimize()
+    {
+        optimize();
+
+        chainFront.clear();
+        chainFront.reserve(chainBack.size());
+
+        for (int i = 0; i < chainBack.size(); i++)
+        {
+            chainFront[i] = chainBack[i];
         }
     }
 
@@ -231,12 +361,12 @@ namespace Fx
             }
         }
 
-        for (auto &fx: chain)
+        for (auto &fx: chainBack)
         {
             delete fx;
         }
 
-        chain = std::vector<FxDescriptor *>(fxMap.size());
+        chainBack = std::vector<FxDescriptor *>(fxMap.size());
 
         int fxIdx = 0;
         for (const auto &[name, p]: fxMap)
@@ -250,10 +380,11 @@ namespace Fx
                 instance->inputs[i++] = input == "IN" ? gFxInputInstanceId : fxMap[input].second->instanceId;
             }
 
-            chain[fxIdx++] = instance;
+            chainBack[fxIdx++] = instance;
         }
 
         optimize();
+        // copyBackChainToFrontOptimize();
 
         return true;
     }
@@ -269,13 +400,13 @@ namespace Fx
         };
 
         int i = 0;
-        for (auto &fx: chain)
+        for (auto &fx: chainBack)
         {
             fxInstanceToNameMap[fx->instanceId] = std::to_string(i++);
         }
 
         i = 0;
-        for (auto &fx: chain)
+        for (auto &fx: chainBack)
         {
             json fxInfoJson;
 
@@ -294,7 +425,8 @@ namespace Fx
 
                 fxInfoJson["type"]   = "gain";
                 fxInfoJson["params"] = {
-                    {"gain", params->gain}
+                    {"gain", params->gain},
+                    {"lvlUnit", params->displayUnit}
                 };
             }
 

@@ -99,7 +99,7 @@ void mainUpdateBuffers()
     gOutBuf[0]  = new float[bufSz];
     gOutBuf[1]  = new float[bufSz];
 
-    for (auto &fx: Fx::gFxChain.chain)
+    for (const auto &fx: Fx::gFxChain.chainFront)
     {
         fx->refreshBuffers();
     }
@@ -107,7 +107,7 @@ void mainUpdateBuffers()
 
 void mainDestroyFxChain()
 {
-    for (auto &fx: Fx::gFxChain.chain)
+    for (const auto &fx: Fx::gFxChain.chainFront)
     {
         delete fx;
     }
@@ -124,8 +124,7 @@ void processChannel(int pCh)
     auto bufSz      = gAsioDrvInfEx.actualBufSz;
     auto sampleRate = gAsioDrvInfEx.sampleRate;
 
-
-    for (auto &fx: Fx::gFxChain.chain)
+    for (const auto &fx: Fx::gFxChain.chainFront)
     {
         std::vector<float *> inputs;
         for (auto &input: fx->inputs)
@@ -216,6 +215,12 @@ void asioCbBufSw(long pDoubleBufIdx, ASIOBool pDirectProcess)
         {
             void *srcBuf = bufInfo.buffers[pDoubleBufIdx];
 
+            if (bufInfo.channelNum == 1)
+            {
+                memcpy(inBuf, gInBuf[0], sizeof(float) * bufSz);
+                continue;
+            }
+
             switch (chInfo.type)
             {
                 case ASIOSTInt32LSB:
@@ -243,24 +248,25 @@ void asioCbBufSw(long pDoubleBufIdx, ASIOBool pDirectProcess)
                     printf("Unimplemented sample type %d\n", chInfo.type);
                 }
             }
-            continue;
         }
-
-        switch (chInfo.type)
+        else
         {
-            case ASIOSTInt32LSB:
+            switch (chInfo.type)
             {
-                for (int j = 0; j < bufSz; ++j)
+                case ASIOSTInt32LSB:
                 {
-                    ((int32_t *) bufInfo.buffers[pDoubleBufIdx])[j] = (int32_t) (outBuf[j] * INT32_MAX);
+                    for (int j = 0; j < bufSz; ++j)
+                    {
+                        ((int32_t *) bufInfo.buffers[pDoubleBufIdx])[j] = (int32_t) (outBuf[j] * INT32_MAX);
+                    }
+
+                    break;
                 }
 
-                break;
-            }
-
-            default:
-            {
-                printf("Unimplemented sample type %d\n", chInfo.type);
+                default:
+                {
+                    printf("Unimplemented sample type %d\n", chInfo.type);
+                }
             }
         }
     }
@@ -375,7 +381,7 @@ void testChainOptimizer()
     auto w = new Fx::FxDescriptorDryWet(e->instanceId, d->instanceId, 0.4F, 1.0F);
     auto k = new Fx::FxDescriptorDryWet(w->instanceId, g->instanceId, 0.7F, 1.0F);
 
-    Fx::gFxChain.chain = {
+    Fx::gFxChain.chainFront = {
         d, b, e, f, c, g, w, k, a
     };
 
@@ -391,6 +397,12 @@ void testChainDeserializer()
     Fx::gFxChain.deserialize("examplepedalscheme-serialized.json");
 }
 
+// void testChainOptimizer2()
+// {
+//     auto gain = new Fx::FxDescriptorGain(Fx::gFxInputInstanceId, 4.69F);
+//     Fx::gFxChain.addFxNoOptimize(gain)
+// }
+
 errCode main2(int argc, char *argv[])
 {
     Fx::init();
@@ -400,7 +412,7 @@ errCode main2(int argc, char *argv[])
     //
     // return ERR_ASIO_BYPASS;
 
-    const bool TEST_GUI = true;
+    const bool TEST_GUI = false;
 
     errCode   err;
     ASIOError asioErr;

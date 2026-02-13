@@ -6,6 +6,9 @@
 #ifndef MAIN_HPP
 #define MAIN_HPP
 
+#include <asio.h>
+#include <json.hpp>
+
 typedef enum
 {
     ERR_OK,
@@ -20,6 +23,19 @@ typedef enum
 
     ERR_ASIO_BYPASS = 99000,
 } errCode;
+
+typedef enum
+{
+    LEVEL_UNIT_LINEAR,
+    LEVEL_UNIT_PERCENTAGE,
+    LEVEL_UNIT_DB,
+} levelUnit;
+
+NLOHMANN_JSON_SERIALIZE_ENUM(levelUnit, {
+                             {LEVEL_UNIT_LINEAR, "linear"},
+                             {LEVEL_UNIT_PERCENTAGE, "percentage"},
+                             {LEVEL_UNIT_DB, "db"}
+                             })
 
 inline constexpr int ASIO_CH_NUM = 4;
 

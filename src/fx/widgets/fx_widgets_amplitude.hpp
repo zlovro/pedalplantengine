@@ -9,14 +9,19 @@
 #include <fx_gfx.hpp>
 #include <fx/fx_amplitude.hpp>
 
+#include <QDial>
+
 namespace Fx::Gfx
 {
     class FxGfxFxWidgetGain : public FxGfxFxWidget
     {
         public:
-        FxGfxFxWidgetGain(FxGfxMainWindow *pParent);
+        QDial* dial;
+
+        explicit FxGfxFxWidgetGain(FxGfxMainWindow *pParent);
 
         void render(QPainter &pPainter) override;
+        FxDescriptorGain::FxParamsGain* getParams() const;
 
         ~FxGfxFxWidgetGain();
     };

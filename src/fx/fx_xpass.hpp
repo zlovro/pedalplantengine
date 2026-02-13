@@ -33,7 +33,7 @@ namespace Fx
         {
             params = new FxParamsLowPassFirstOrder(pCutoffFreq);
 
-            processor = [](const std::vector<float*>& pInputs, float *pOut, int pBufSz, int pSampleRate, const void *pParams, int pCh)
+            processor = [](const std::vector<float *> &pInputs, float *pOut, int pBufSz, int pSampleRate, const void *pParams, int pCh)
             {
                 auto pIn = pInputs[0];
 
@@ -81,28 +81,28 @@ namespace Fx
     };
 
     // 1st order hipass
-    typedef struct FxParamsHighPassFirstOrder
-    {
-        // dont serialize
-        float lastSample;
-
-        float cutoffFreq;
-
-        explicit FxParamsHighPassFirstOrder(float pCutoff)
-        {
-            lastSample = 0;
-            cutoffFreq = pCutoff;
-        }
-    } FxParamsHighPassFirstOrder;
-
     class FxDescriptorHighPassFilterFirstOrder : public FxDescriptor
     {
         public:
-        explicit FxDescriptorHighPassFilterFirstOrder(FxInstanceId pInput, float pCutoffFreq = 22000.0F) : FxDescriptor(pInput)
+        typedef struct FxParamsHighPassFirstOrder
+        {
+            // dont serialize
+            float lastSample;
+
+            float cutoffFreq;
+
+            explicit FxParamsHighPassFirstOrder(float pCutoff)
+            {
+                lastSample = 0;
+                cutoffFreq = pCutoff;
+            }
+        } FxParamsHighPassFirstOrder;
+
+        explicit FxDescriptorHighPassFilterFirstOrder(float pCutoffFreq = 0) : FxDescriptor()
         {
             params = new FxParamsHighPassFirstOrder(pCutoffFreq);
 
-            processor = [](const std::vector<float*>& pInputs, float *pOut, int pBufSz, int pSampleRate, const void *pParams, int pCh)
+            processor = [](const std::vector<float *> &pInputs, float *pOut, int pBufSz, int pSampleRate, const void *pParams, int pCh)
             {
                 auto pIn = pInputs[0];
 
@@ -120,6 +120,11 @@ namespace Fx
 
                 params->lastSample = pOut[pBufSz - 1];
             };
+        }
+
+        explicit FxDescriptorHighPassFilterFirstOrder(FxInstanceId pInput, float pCutoffFreq = 22000.0F) : FxDescriptorHighPassFilterFirstOrder(pCutoffFreq)
+        {
+            inputs = std::vector{pInput};
         }
 
         int getExpectedInputCount() override

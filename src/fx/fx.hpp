@@ -22,6 +22,7 @@ namespace Fx
         FX_ID_HIPASS_FIRST_ORDER,
 
         FX_ID_GAIN,
+        FX_ID_LEVEL,
         FX_ID_COMPRESSOR,
 
         FX_ID_SUM,
@@ -31,8 +32,10 @@ namespace Fx
         FX_ID_GENERIC_DIODE_CURVE,
     } FxId;
 
+    inline constexpr float FX_MAX_AUDIO_VALUE = 0.95F;
+
     typedef int    FxInstanceId;
-    typedef void (*FxProcessor)(const std::vector<float*>& pInputs, float *pOut, int pBufSz, int pSampleRate, const void *pParams, int pCh);
+    typedef void (*FxProcessor)(const std::vector<float *> &pInputs, float *pOut, int pBufSz, int pSampleRate, const void *pParams, int pCh);
 
     class FxDescriptor
     {
@@ -48,7 +51,7 @@ namespace Fx
         explicit FxDescriptor(const std::vector<FxInstanceId> &pInputs);
         explicit FxDescriptor(FxInstanceId pInput);
 
-        void refreshBuffers() const;
+        void refreshBuffers();
 
         virtual int         getExpectedInputCount() = 0;
         virtual FxId        getId() = 0;
@@ -62,18 +65,20 @@ namespace Fx
     {
         public:
         // dont add or remove from this list - only use it for iteration
-        std::vector<FxDescriptor *> chain;
+        std::vector<FxDescriptor *> chainFront, chainBack;
 
         // dont add or remove from this map - only use it for iteration
         std::map<FxInstanceId, FxDescriptor *> fxIdToFxMap;
 
         FxChain();
 
-        // adds an element to the chain without calling optimize(). useful for multiple adds
+        // adds an element to the back chain without calling optimize(). useful for multiple adds
         void addFxNoOptimize(FxDescriptor *pFx);
 
-        // should (or must) be called before processing (preferably after adding/removing/inserting/changing chain). organizes the chain such that no element tries to capture output from an unprocessed fx
+        // modifies back chain. should (or must) be called before processing (preferably after adding/removing/inserting/changing chain). organizes the chain such that no element tries to capture output from an unprocessed fx
         void optimize();
+
+        void copyBackChainToFrontOptimize();
 
         bool deserialize(const std::filesystem::path &pFile);
         bool serialize(const std::filesystem::path &pFile);

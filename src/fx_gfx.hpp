@@ -16,6 +16,7 @@
 
 namespace Fx::Gfx
 {
+    class FxGfxFxWidgetInput;
     extern const char *FX_FONT_FAMILY;
     extern const int   FX_FONT_SIZE;
     extern const int   FX_FONT_SIZE_SMALL;
@@ -39,8 +40,10 @@ namespace Fx::Gfx
     extern const int    FX_WIDGET_CONNECTOR_RADIUS_VERTICAL;
     extern const int    FX_WIDGET_CONNECTOR_RADIUS_BORDER;
 
-    extern const int FX_WIDGET_DEFAULT_WIDTH, FX_WIDGET_DEFAULT_HEIGHT;
-    extern const int FX_WIDGET_OUTLINE_WIDTH;
+    extern const int     FX_WIDGET_DEFAULT_WIDTH, FX_WIDGET_DEFAULT_HEIGHT;
+    inline constexpr int FX_WIDGET_DIAL_SIZE   = 60;
+    inline constexpr int FX_WIDGET_DIAL_MARGIN = 30;
+    extern const int     FX_WIDGET_OUTLINE_WIDTH;
 
     class FxGfxFxWidget : public QWidget
     {
@@ -57,19 +60,23 @@ namespace Fx::Gfx
             CONN_INPUT,
             CONN_OUTPUT,
             CONN_UNCONNECTED,
-            CONN_TYPE_COUNT
+            CONN_TYPE_COUNT,
+            CONN_INVALID
         } ConnectorType;
 
-        typedef struct ConnectorPoint
+        class ConnectorPoint
         {
+            public:
+            FxGfxFxWidget *parent;
+
             QRect localRect;
             QRect globalRect;
 
-            ConnectorType type   = CONN_UNCONNECTED;
-            FxInstanceId  origin = FX_INVALID_INSTANCE_ID;
+            ConnectorType type;
+            FxInstanceId  origin;
 
-            void disconnect();
-        } ConnectorPoint;
+            explicit ConnectorPoint(FxGfxFxWidget *pParent = nullptr);
+        };
 
         FxGfxMainWindow *wndParent;
         FxDescriptor *   fxDsc;
@@ -89,6 +96,8 @@ namespace Fx::Gfx
         void showCtxMenu(QPoint pPoint);
         void onCtxMenuItemChecked();
 
+        void disconnectConnector(ConnectorPoint *pPoint) const;
+
         void resizeEvent(QResizeEvent *event) override;
         void moveEvent(QMoveEvent *event) override;
         void paintEvent(QPaintEvent *event) override;
@@ -96,8 +105,8 @@ namespace Fx::Gfx
         void mousePressEvent(QMouseEvent *event) override;
         void leaveEvent(QEvent *event) override;
 
-        QPoint getGlobalCentre();
-        QPoint getLocalCentre();
+        QPoint getGlobalCentre() const;
+        QPoint getLocalCentre() const;
 
         void updateConnectorPositions();
         void moveToCentre();
@@ -106,9 +115,12 @@ namespace Fx::Gfx
         QPoint mLastMousePos;
     };
 
+    // singleton
     class FxGfxFxWidgetInput : public FxGfxFxWidget
     {
         public:
+        static FxGfxFxWidgetInput *instance;
+
         explicit FxGfxFxWidgetInput(FxGfxMainWindow *pParent);
 
         void render(QPainter &pPainter) override;
@@ -119,6 +131,8 @@ namespace Fx::Gfx
     class FxGfxFxWidgetOutput : public FxGfxFxWidget
     {
         public:
+        static FxGfxFxWidgetOutput *instance;
+
         explicit FxGfxFxWidgetOutput(FxGfxMainWindow *pParent);
 
         void render(QPainter &pPainter) override;
@@ -126,21 +140,26 @@ namespace Fx::Gfx
         ~FxGfxFxWidgetOutput() override;
     };
 
+    // singleton
     class FxGfxMainWindow : public QMainWindow
     {
         public:
-        typedef struct ConnectingLine
+        static FxGfxMainWindow *instance;
+
+        class ConnectingLine
         {
-            QPoint       a,   b;
-            FxInstanceId fxA, fxB;
-        } ConnectingLine;
+            public:
+            FxGfxFxWidget::ConnectorPoint *a, *b;
+
+            ConnectingLine(FxGfxFxWidget::ConnectorPoint *pA, FxGfxFxWidget::ConnectorPoint *pB);
+        };
 
         bool                           isDrawing;
         FxGfxFxWidget::ConnectorPoint *drawingOriginConnector;
         QPen                           drawingPen;
 
         // do not add or remove, only read
-        std::map<FxInstanceId, std::vector<ConnectingLine *> > connectingLinesMap;
+        std::vector<ConnectingLine *> connectingLines;
 
         FxGfxMainWindow();
         ~FxGfxMainWindow();
@@ -149,7 +168,9 @@ namespace Fx::Gfx
         void cancelDrawing();
         void stopDrawing();
 
-        bool canConnectFx(FxGfxFxWidget::ConnectorPoint &pSrc, FxGfxFxWidget::ConnectorPoint &pDst);
+        std::vector<ConnectingLine *> getLinesOnConnector(const FxGfxFxWidget::ConnectorPoint *pPoint) const;
+
+        bool canConnectFx(FxGfxFxWidget::ConnectorPoint *pSrc, FxGfxFxWidget::ConnectorPoint *pDst);
 
         // you MUST call canConnectFx before calling this.
         void connectFx(FxGfxFxWidget::ConnectorPoint *pSrc, FxGfxFxWidget::ConnectorPoint *pDst);
@@ -170,7 +191,7 @@ namespace Fx::Gfx
         void mousePressEvent(QMouseEvent *event) override;
         void keyReleaseEvent(QKeyEvent *event) override;
 
-        QPoint getCenter();
+        QPoint getCenter() const;
     };
 
     static void drawBezier(QPainter &pPainter, const std::vector<QPoint> &pPoints, const QPen &pPen);

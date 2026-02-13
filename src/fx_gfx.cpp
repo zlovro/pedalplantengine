@@ -13,12 +13,10 @@
 #include <QApplication>
 
 #include <cmath>
-#include <set>
 
-#include "fx/widgets/fx_widgets_amplitude.hpp"
-#include "fx_gfx.hpp"
+#include <fx/widgets/fx_widgets_amplitude.hpp>
 
-#include <ranges>
+#include "fx/widgets/fx_widgets_xpass.hpp"
 
 namespace Fx::Gfx
 {
@@ -30,7 +28,7 @@ namespace Fx::Gfx
     const QFont FX_BOLD_FONT(FX_FONT_FAMILY, FX_FONT_SIZE, QFont::Bold);
     const QFont FX_BOLD_FONT_SMALL(FX_FONT_FAMILY, FX_FONT_SIZE_SMALL, QFont::Bold);
 
-    extern const QColor FX_WIDGET_FILL_COLOR(140, 140, 140, 255);
+    extern const QColor FX_WIDGET_FILL_COLOR(140, 140, 140, 140);
 
     extern const QColor FX_WIDGET_OUTLINE_COLOR(0, 0, 0);
     extern const int    FX_WIDGET_OUTLINE_RADIUS = 7;
@@ -47,8 +45,18 @@ namespace Fx::Gfx
     extern const int FX_WIDGET_DEFAULT_WIDTH  = 120;
     extern const int FX_WIDGET_DEFAULT_HEIGHT = 80;
 
+    FxGfxMainWindow::ConnectingLine::ConnectingLine(FxGfxFxWidget::ConnectorPoint *pA, FxGfxFxWidget::ConnectorPoint *pB)
+    {
+        a = pA;
+        b = pB;
+    }
+
+    FxGfxMainWindow *FxGfxMainWindow::instance = nullptr;
+
     FxGfxMainWindow::FxGfxMainWindow() : QMainWindow()
     {
+        instance = this;
+
         isDrawing              = false;
         drawingOriginConnector = nullptr;
 
@@ -68,19 +76,12 @@ namespace Fx::Gfx
 
     FxGfxMainWindow::~FxGfxMainWindow()
     {
-        std::set<ConnectingLine *> deleted;
-
-        for (auto &v: connectingLinesMap | std::views::values)
+        for (auto &x: connectingLines)
         {
-            for (auto &x: v)
-            {
-                if (!deleted.contains(x))
-                {
-                    delete x;
-                    deleted.emplace(x);
-                }
-            }
+            delete x;
         }
+
+        connectingLines.clear();
     }
 
     void FxGfxMainWindow::startDrawing(FxGfxFxWidget::ConnectorPoint *pSourceConnector, const QPen &pPen)
@@ -99,36 +100,36 @@ namespace Fx::Gfx
         update();
     }
 
-    bool FxGfxMainWindow::canConnectFx(FxGfxFxWidget::ConnectorPoint &pSrc, FxGfxFxWidget::ConnectorPoint &pDst)
+    std::vector<FxGfxMainWindow::ConnectingLine *> FxGfxMainWindow::getLinesOnConnector(const FxGfxFxWidget::ConnectorPoint *pPoint) const
     {
-        bool srcAsIn = pSrc.type == FxGfxFxWidget::CONN_INPUT && pDst.type == FxGfxFxWidget::CONN_OUTPUT;
-        bool dstAsIn = pSrc.type == FxGfxFxWidget::CONN_OUTPUT && pDst.type == FxGfxFxWidget::CONN_INPUT;
+        std::vector<ConnectingLine *> list;
+        for (auto x: connectingLines)
+        {
+            if (x->a == pPoint || x->b == pPoint)
+            {
+                list.push_back(x);
+            }
+        }
+
+        return list;
+    }
+
+    bool FxGfxMainWindow::canConnectFx(FxGfxFxWidget::ConnectorPoint *pSrc, FxGfxFxWidget::ConnectorPoint *pDst)
+    {
+        bool srcAsIn = pSrc->type == FxGfxFxWidget::CONN_INPUT && pDst->type == FxGfxFxWidget::CONN_OUTPUT;
+        bool dstAsIn = pSrc->type == FxGfxFxWidget::CONN_OUTPUT && pDst->type == FxGfxFxWidget::CONN_INPUT;
+
         if (srcAsIn || dstAsIn)
         {
-            if (srcAsIn && pSrc.origin != FX_INVALID_INSTANCE_ID)
+            auto in  = srcAsIn ? pSrc : pDst;
+            auto out = srcAsIn ? pDst : pSrc;
+
+            if (!getLinesOnConnector(in).empty())
             {
                 return false;
             }
 
-            if (dstAsIn && pDst.origin != FX_INVALID_INSTANCE_ID)
-            {
-                return false;
-            }
-
-            bool exists = false;
-            if (connectingLinesMap.contains(pSrc.origin))
-            {
-                for (auto &c: connectingLinesMap[pSrc.origin])
-                {
-                    if ((c->fxA == pDst.origin && c->fxB == pSrc.origin) || (c->fxA == pSrc.origin && c->fxB == pDst.origin))
-                    {
-                        exists = true;
-                        break;
-                    }
-                }
-            }
-
-            return !exists;
+            return true;
         }
 
         return false;
@@ -136,29 +137,40 @@ namespace Fx::Gfx
 
     void FxGfxMainWindow::connectFx(FxGfxFxWidget::ConnectorPoint *pSrc, FxGfxFxWidget::ConnectorPoint *pDst)
     {
-        auto line = new ConnectingLine{pSrc->globalRect.center(), pDst->globalRect.center(), pSrc->origin, pDst->origin};
-
+        FxGfxFxWidget::ConnectorPoint *in, *out;
         if (pSrc->type == FxGfxFxWidget::CONN_INPUT)
         {
-            pSrc->origin = pDst->origin;
+            in  = pSrc;
+            out = pDst;
         }
         else
         {
-            pDst->origin = pSrc->origin;
+            in  = pDst;
+            out = pSrc;
         }
 
-        connectingLinesMap[pSrc->origin].push_back(line);
+        auto line = new ConnectingLine(pSrc, pDst);
+
+        if (in->parent->widgetType != FxGfxFxWidget::WIDGET_OUTPUT)
+        {
+            auto inParent = in->parent->fxDsc->instanceId;
+            gFxChain.fxIdToFxMap[inParent]->inputs.push_back(out->origin);
+        }
+        in->origin = out->origin;
+
+        connectingLines.push_back(line);
+
+        gFxChain.optimize();
 
         isDrawing = false;
     }
 
-    QPoint FxGfxMainWindow::getCenter()
+    QPoint FxGfxMainWindow::getCenter() const
     {
         return {size().width() / 2, size().height() / 2};
     }
 
     // rendering, gfx, gui code
-
     FxGfxFxWidget::FxGfxFxWidget(FxGfxMainWindow *pParent)
     {
         setParent(pParent);
@@ -175,7 +187,8 @@ namespace Fx::Gfx
 
         for (auto &connector: connectors)
         {
-            connector.type = CONN_UNCONNECTED;
+            connector.parent = this;
+            connector.type   = CONN_UNCONNECTED;
         }
 
         setMouseTracking(true);
@@ -195,23 +208,14 @@ namespace Fx::Gfx
 
         auto painter = QPainter(this);
 
-        std::set<ConnectingLine *> lines;
-        for (auto &v: connectingLinesMap | std::views::values)
+        for (auto x: connectingLines)
         {
-            for (auto &x: v)
-            {
-                if (!lines.contains(x))
-                {
-                    auto p1 = x->a;
-                    auto p4 = x->b;
-                    auto p3 = QPoint{(p1.x() + p4.x()) / 2, p4.y()};
-                    auto p2 = QPoint{p3.x(), p1.y()};
+            auto p1 = x->a->globalRect.center();
+            auto p4 = x->b->globalRect.center();
+            auto p3 = QPoint{(p1.x() + p4.x()) / 2, p4.y()};
+            auto p2 = QPoint{p3.x(), p1.y()};
 
-                    drawBezier(painter, std::vector{p1, p2, p3, p4}, drawingPen);
-
-                    lines.emplace(x);
-                }
-            }
+            drawBezier(painter, std::vector{p1, p2, p3, p4}, drawingPen);
         }
 
         if (isDrawing)
@@ -260,23 +264,32 @@ namespace Fx::Gfx
 
     void drawBezier(QPainter &pPainter, const std::vector<QPoint> &pPoints, const QPen &pPen)
     {
+        QPoint previousPoint = pPoints[0];
+        QPoint finalPoint    = pPoints[pPoints.size() - 1];
+
         pPainter.setPen(pPen);
 
-        const int   RESOLUTION = 10;
-        const float STEP       = 1.0F / (RESOLUTION - 1);
+        // how many lines fit in one height or width of the window
+        constexpr int LINE_DENSITY  = 50;
+        int           segmentLength = std::min(FxGfxMainWindow::instance->width(), FxGfxMainWindow::instance->height()) / LINE_DENSITY;
 
-        auto t = STEP;
-        auto n = pPoints.size();
+        auto da           = finalPoint.x() - previousPoint.x();
+        auto db           = finalPoint.y() - previousPoint.y();
+        auto approxLength = std::sqrtf(da * da + db * db);
 
-        QPoint lastPoint = pPoints[0];
+        int segments = std::ceil(approxLength / segmentLength);
 
-        for (int i = 1; i < RESOLUTION; i++, t += STEP)
+        auto step = 1.0F / (segments - 1);
+        auto t    = step;
+        auto n    = pPoints.size();
+
+        for (int i = 1; i < segments; i++, t += step)
         {
             QPoint point;
 
-            if (i == RESOLUTION - 1)
+            if (i == segments - 1)
             {
-                point = pPoints[pPoints.size() - 1];
+                point = finalPoint;
             }
             else
             {
@@ -296,8 +309,8 @@ namespace Fx::Gfx
                 point = points[0];
             }
 
-            pPainter.drawLine(lastPoint, point);
-            lastPoint = point;
+            pPainter.drawLine(previousPoint, point);
+            previousPoint = point;
         }
     }
 
@@ -338,7 +351,8 @@ namespace Fx::Gfx
 
     void FxGfxFxWidget::onCtxMenuItemChecked()
     {
-        auto type = connectors[currentConnectorIdx].type;
+        auto          oldType = connectors[currentConnectorIdx].type;
+        ConnectorType newType = CONN_INVALID;
 
         for (auto &action: findChild<QMenu *>()->actions())
         {
@@ -351,37 +365,59 @@ namespace Fx::Gfx
 
             if (txt == "Input")
             {
-                type = CONN_INPUT;
+                newType = CONN_INPUT;
             }
             else if (txt == "Output")
             {
-                type = CONN_OUTPUT;
+                newType = CONN_OUTPUT;
             }
             else
             {
-                type = CONN_UNCONNECTED;
-            }
-
-            if (type == CONN_INPUT)
-            {
-                connectors[currentConnectorIdx].origin = FX_INVALID_INSTANCE_ID;
-            }
-            else
-            {
-                if (widgetType == WIDGET_INPUT)
-                {
-                    connectors[currentConnectorIdx].origin = gFxInputInstanceId;
-                }
-                else
-                {
-                    connectors[currentConnectorIdx].origin = fxDsc->instanceId;
-                }
+                newType = CONN_UNCONNECTED;
             }
             break;
         }
 
+        // ensure there is enough room for inputs, otherwise quit
+        if (newType == CONN_OUTPUT && fxDsc)
+        {
+            auto remaining = 3;
+            for (int i = 0; i < 4; ++i)
+            {
+                if (i != currentConnectorIdx && connectors[i].type == CONN_OUTPUT)
+                {
+                    remaining--;
+                }
+            }
+
+            if (remaining < 1)
+            {
+                newType = oldType;
+                goto end;
+            }
+        }
+
+        if (newType == CONN_INPUT)
+        {
+            connectors[currentConnectorIdx].origin = FX_INVALID_INSTANCE_ID;
+        }
+        else
+        {
+            if (widgetType == WIDGET_INPUT)
+            {
+                connectors[currentConnectorIdx].origin = gFxInputInstanceId;
+            }
+            else if (widgetType == WIDGET_OUTPUT)
+            {
+            }
+            else
+            {
+                connectors[currentConnectorIdx].origin = fxDsc->instanceId;
+            }
+        }
+
         // fxDsc will be null when widget is IN or OUT
-        if (type == CONN_INPUT && fxDsc)
+        if (newType == CONN_INPUT && fxDsc)
         {
             for (int i = 0, inputCount = 1; i < 4; ++i)
             {
@@ -397,14 +433,39 @@ namespace Fx::Gfx
 
                 if (inputCount > fxDsc->getExpectedInputCount())
                 {
-                    connectors[i].disconnect();
+                    disconnectConnector(&connectors[i]);
                     inputCount--;
                 }
             }
         }
 
-        connectors[currentConnectorIdx].type = type;
+        if (newType == CONN_UNCONNECTED)
+        {
+            disconnectConnector(&connectors[currentConnectorIdx]);
+        }
+
+    end:
+        connectors[currentConnectorIdx].type = newType;
+        wndParent->update();
         update();
+    }
+
+    void FxGfxFxWidget::disconnectConnector(ConnectorPoint *pPoint) const
+    {
+        pPoint->type   = CONN_UNCONNECTED;
+        pPoint->origin = FX_INVALID_INSTANCE_ID;
+
+        auto lines = &wndParent->connectingLines;
+        for (int i = 0; i < lines->size(); i++)
+        {
+            if (lines->at(i)->a == pPoint || lines->at(i)->b == pPoint)
+            {
+                lines->erase(lines->begin() + i);
+                break;
+            }
+        }
+
+        gFxChain.optimize();
     }
 
     void FxGfxFxWidget::resizeEvent(QResizeEvent *event)
@@ -434,6 +495,7 @@ namespace Fx::Gfx
         QWidget::moveEvent(event);
 
         updateConnectorPositions();
+        wndParent->update();
     }
 
     void FxGfxFxWidget::updateConnectorPositions()
@@ -492,7 +554,7 @@ namespace Fx::Gfx
 
         painter.setBrush(Qt::black);
 
-        painter.setFont(FX_BOLD_FONT_SMALL);
+        painter.setFont(FX_BOLD_FONT);
         render(painter);
     }
 
@@ -553,9 +615,10 @@ namespace Fx::Gfx
 
         auto hoveringOverConnector = currentConnectorIdx != -1;
 
-        if (wndParent->isDrawing && isLeftClick && hoveringOverConnector && wndParent->canConnectFx(*wndParent->drawingOriginConnector, connectors[currentConnectorIdx]))
+        if (wndParent->isDrawing && isLeftClick && hoveringOverConnector && wndParent->canConnectFx(wndParent->drawingOriginConnector, &connectors[currentConnectorIdx]))
         {
             wndParent->connectFx(wndParent->drawingOriginConnector, &connectors[currentConnectorIdx]);
+            update();
         }
         else
         {
@@ -577,18 +640,19 @@ namespace Fx::Gfx
         setCursor(Qt::ArrowCursor);
     }
 
-    void FxGfxFxWidget::ConnectorPoint::disconnect()
+    FxGfxFxWidget::ConnectorPoint::ConnectorPoint(FxGfxFxWidget *pParent)
     {
+        parent = pParent;
         type   = CONN_UNCONNECTED;
         origin = FX_INVALID_INSTANCE_ID;
     }
 
-    QPoint FxGfxFxWidget::getGlobalCentre()
+    QPoint FxGfxFxWidget::getGlobalCentre() const
     {
         return QPoint{x() + width() / 2, y() + height() / 2};
     }
 
-    QPoint FxGfxFxWidget::getLocalCentre()
+    QPoint FxGfxFxWidget::getLocalCentre() const
     {
         return QPoint{width() / 2, height() / 2};
     }
@@ -600,8 +664,12 @@ namespace Fx::Gfx
 
     // input widget
 
+    FxGfxFxWidgetInput *FxGfxFxWidgetInput::instance = nullptr;
+
     FxGfxFxWidgetInput::FxGfxFxWidgetInput(FxGfxMainWindow *pParent): FxGfxFxWidget(pParent)
     {
+        instance = this;
+
         setCursor(Qt::ArrowCursor);
         widgetType = WIDGET_INPUT;
         justAdded  = false;
@@ -623,8 +691,12 @@ namespace Fx::Gfx
 
     // output widget
 
+    FxGfxFxWidgetOutput *FxGfxFxWidgetOutput::instance = nullptr;
+
     FxGfxFxWidgetOutput::FxGfxFxWidgetOutput(FxGfxMainWindow *pParent) : FxGfxFxWidget(pParent)
     {
+        instance = this;
+
         setCursor(Qt::ArrowCursor);
         widgetType = WIDGET_OUTPUT;
         justAdded  = false;
@@ -686,8 +758,9 @@ namespace Fx::Gfx
     void FxGfxMainWindow::addGain()
     {
         auto widget = new FxGfxFxWidgetGain(this);
-
         widget->show();
+
+        gFxChain.addFxNoOptimize(widget->fxDsc);
     }
 
     void FxGfxMainWindow::addBezier()
@@ -712,5 +785,9 @@ namespace Fx::Gfx
 
     void FxGfxMainWindow::addHipass1()
     {
+        auto widget = new FxGfxFxWidgetHighPass1(this);
+        widget->show();
+
+        gFxChain.addFxNoOptimize(widget->fxDsc);
     }
 }

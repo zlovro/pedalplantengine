@@ -9,23 +9,34 @@
 #include <algorithm>
 #include <fx/fx.hpp>
 
+#include "main.hpp"
+
 namespace Fx
 {
     // gain
-    typedef struct
-    {
-        float gain;
-    } FxParamsGain;
-
     class FxDescriptorGain : public FxDescriptor
     {
         public:
-        explicit FxDescriptorGain(FxInstanceId pInput, float pGain = 1.0F) : FxDescriptor(pInput)
+        typedef struct FxParamsGain
         {
-            auto par  = new FxParamsGain();
-            par->gain = pGain;
+            levelUnit displayUnit;
+            float     gain;
 
-            params = par;
+            explicit FxParamsGain(float pGain, levelUnit pDisplayUnit)
+            {
+                gain        = pGain;
+                displayUnit = pDisplayUnit;
+            }
+        } FxParamsGain;
+
+        explicit FxDescriptorGain(FxInstanceId pInput, float pGain = 1.0F, levelUnit pLvlUnit = LEVEL_UNIT_LINEAR) : FxDescriptorGain(pGain, pLvlUnit)
+        {
+            inputs = std::vector{pInput};
+        }
+
+        explicit FxDescriptorGain(float pGain = 1.0F, levelUnit pLvlUnit = LEVEL_UNIT_LINEAR) : FxDescriptor()
+        {
+            params = new FxParamsGain(pGain, pLvlUnit);
 
             processor = [](const std::vector<float *> &pInputs, float *pOut, int pBufSz, int pSampleRate, const void *pParams, int pCh)
             {
@@ -36,7 +47,7 @@ namespace Fx
 
                 for (int i = 0; i < pBufSz; ++i)
                 {
-                    pOut[i] = std::clamp(pIn[i] * gain, -1.0F, 1.0F);
+                    pOut[i] = std::clamp(pIn[i] * gain, -FX_MAX_AUDIO_VALUE, FX_MAX_AUDIO_VALUE);
                 }
             };
         }
