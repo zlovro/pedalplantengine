@@ -98,7 +98,7 @@ namespace Fx
             }
         } FxParamsHighPassFirstOrder;
 
-        explicit FxDescriptorHighPassFilterFirstOrder(float pCutoffFreq = 0) : FxDescriptor()
+        explicit FxDescriptorHighPassFilterFirstOrder(float pCutoffFreq = 1) : FxDescriptor()
         {
             params = new FxParamsHighPassFirstOrder(pCutoffFreq);
 

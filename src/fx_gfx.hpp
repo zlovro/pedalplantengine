@@ -48,6 +48,8 @@ namespace Fx
     class FxWidget : public QWidget
     {
         public:
+        static std::map<FxInstanceId, FxWidget*> fxIdToWidgetMap;
+
         typedef enum FxWidgetType
         {
             WIDGET_REGULAR,
@@ -89,7 +91,7 @@ namespace Fx
         FxWidgetType                  widgetType;
         std::array<ConnectorPoint, 4> connectors;
 
-        explicit FxWidget(FxMainWindow *pParent);
+        explicit FxWidget(FxMainWindow *pParent, FxDescriptor* pDsc);
 
         virtual void render(QPainter &pPainter);
 
@@ -99,6 +101,7 @@ namespace Fx
         void onCtxMenuItemChecked();
 
         void disconnectConnector(ConnectorPoint *pPoint) const;
+        void addToFxChainNoOptimize() const;
 
         void resizeEvent(QResizeEvent *event) override;
         void moveEvent(QMoveEvent *event) override;
@@ -173,7 +176,7 @@ namespace Fx
 
         std::vector<ConnectingLine *> getLinesOnConnector(const FxWidget::ConnectorPoint *pPoint) const;
 
-        bool canConnectFx(FxWidget::ConnectorPoint *pSrc, FxWidget::ConnectorPoint *pDst);
+        bool canConnectFx(FxWidget::ConnectorPoint *pSrc, FxWidget::ConnectorPoint *pDst) const;
 
         // you MUST call canConnectFx before calling this.
         void connectFx(FxWidget::ConnectorPoint *pSrc, FxWidget::ConnectorPoint *pDst);

@@ -5,11 +5,11 @@
 
 #include "fx_widgets_xpass.hpp"
 
-Fx::FxWidgetHipass1::FxWidgetHipass1(FxMainWindow *pParent) : FxWidget(pParent)
+#include "audiomath.hpp"
+
+Fx::FxWidgetHipass1::FxWidgetHipass1(FxMainWindow *pParent) : FxWidget(pParent, new FxDescriptorHighPassFilterFirstOrder())
 {
     resize(width() * 1.2, std::max(height(), FX_WIDGET_DIAL_SIZE * 2 + FX_WIDGET_DIAL_MARGIN * 2));
-
-    fxDsc = new FxDescriptorHighPassFilterFirstOrder();
 
     dial = new QDial(this);
     dial->resize(FX_WIDGET_DIAL_SIZE, FX_WIDGET_DIAL_SIZE);
@@ -19,7 +19,7 @@ Fx::FxWidgetHipass1::FxWidgetHipass1(FxMainWindow *pParent) : FxWidget(pParent)
 
     connect(dial, QDial::valueChanged, this, [this](int pValue)
     {
-        getParams()->cutoffFreq = (1.0F - std::logf(dial->maximum() - pValue + 1) / std::logf(dial->maximum() + 1)) * dial->maximum();
+        getParams()->cutoffFreq = AudioMath::linearToEasedInOutCubic(0, dial->maximum(), pValue);
         update();
     });
 

@@ -21,6 +21,7 @@
 #include <fx_gfx.hpp>
 #include <main.hpp>
 
+#include "fx/widgets/fx_widgets_amplitude.hpp"
 #include "fx/widgets/fx_widgets_xpass.hpp"
 
 #if WINDOWS
@@ -417,14 +418,21 @@ void testHipass()
     auto mainWnd = Fx::FxMainWindow::instance;
 
     auto hp = new Fx::FxWidgetHipass1(mainWnd);
-    hp->move(mainWnd->rect().center());
+    hp->move(mainWnd->rect().center() + QPoint{});
     hp->moveAroundOnSpawn = false;
     hp->show();
+    hp->addToFxChainNoOptimize();
 
-    Fx::gFxChain.addFxNoOptimize(hp->fxDsc);
+    auto gain = new Fx::FxWidgetGain(mainWnd);
+    gain->getParams()->displayUnit = LEVEL_UNIT_PERCENTAGE;
+    gain->move(mainWnd->rect().center() + QPoint{200, 200});
+    gain->moveAroundOnSpawn = false;
+    gain->show();
+    gain->addToFxChainNoOptimize();
 
     mainWnd->connectFx(Fx::FxWidgetIn::instance->connectorRight->withType(Fx::FxWidget::CONN_OUTPUT), hp->connectorLeft->withType(Fx::FxWidget::CONN_INPUT));
-    mainWnd->connectFx(hp->connectorRight->withType(Fx::FxWidget::CONN_OUTPUT), Fx::FxWidgetOut::instance->connectorLeft->withType(Fx::FxWidget::CONN_INPUT));
+    // intentional hole
+    mainWnd->connectFx(gain->connectorRight->withType(Fx::FxWidget::CONN_OUTPUT), Fx::FxWidgetOut::instance->connectorLeft->withType(Fx::FxWidget::CONN_INPUT));
 
     Fx::gFxChain.optimize();
 }
@@ -562,10 +570,11 @@ errCode main2(int argc, char *argv[])
         asioDeinitDrivers();
     }
 
-    for (const auto &event: Event::instances)
-    {
-        delete event;
-    }
+    // all events are automatic lifetime objects, for now
+    // for (const auto &event: Event::instances)
+    // {
+    //     delete event;
+    // }
 
     Event::instances.clear();
 

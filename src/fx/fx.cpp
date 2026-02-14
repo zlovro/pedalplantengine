@@ -117,19 +117,65 @@ namespace Fx
             return isFrontChainValid = false;
         }
 
+        // check continuity
+        auto linkedToInput  = false;
+        auto linkedToOutput = false;
+        for (auto &ex: chainBack)
+        {
+            if (!linkedToOutput)
+            {
+                for (auto &conn: FxWidgetOut::instance->connectors)
+                {
+                    if (conn.origin == ex->instanceId)
+                    {
+                        linkedToOutput = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!linkedToInput)
+            {
+                if (!FxWidget::fxIdToWidgetMap.contains(ex->instanceId))
+                {
+                    continue;
+                }
+
+                for (auto &conn: FxWidget::fxIdToWidgetMap[ex->instanceId]->connectors)
+                {
+                    if (conn.origin == gFxInputInstanceId)
+                    {
+                        linkedToInput = true;
+                        break;
+                    }
+                }
+            }
+
+            if (linkedToOutput && linkedToInput)
+            {
+                break;
+            }
+        }
+
+        if (!(linkedToOutput && linkedToInput))
+        {
+            return isFrontChainValid = false;
+        }
+
         std::deque<FxInstanceId> q;
-        std::set<FxInstanceId>   explored;
+        std::set                 explored = {out};
 
         auto currentRoot = out;
 
         while (true)
         {
-            if (!idToInstanceMap.contains(currentRoot))
+            auto currentRootIsInput = currentRoot == gFxInputInstanceId;
+            if (!currentRootIsInput && !idToInstanceMap.contains(currentRoot))
             {
                 return isFrontChainValid = false;
             }
 
-            auto parents = currentRoot == gFxInputInstanceId ? std::vector<FxInstanceId>{} : idToInstanceMap[currentRoot]->inputs;
+            auto parents = currentRootIsInput ? std::vector<FxInstanceId>{} : idToInstanceMap[currentRoot]->inputs;
 
             auto allParentsExplored = true;
             for (const auto &p: parents)
@@ -181,22 +227,21 @@ namespace Fx
 
     leafDone:
 
-        if (!explored.contains(gFxInputInstanceId))
+        if (!(explored.contains(out) && explored.contains(gFxInputInstanceId)))
         {
-            return isFrontChainValid = false;;
+            return isFrontChainValid = false;
         }
 
-        explored.emplace(out);
-
-        erase_if(chainBack, [explored](const FxDescriptor *pDsc)
+        auto chainBackCopy = std::vector(chainBack);
+        erase_if(chainBackCopy, [explored](const FxDescriptor *pDsc)
         {
             return !explored.contains(pDsc->instanceId);
         });
 
-        erase_if(gFxChain.fxIdToFxMap, [this](const std::pair<const int, FxDescriptor *> &pX)
+        erase_if(gFxChain.fxIdToFxMap, [this, chainBackCopy](const std::pair<const int, FxDescriptor *> &pX)
         {
             auto found = false;
-            for (const auto &x: chainBack)
+            for (const auto &x: chainBackCopy)
             {
                 if (x->instanceId == pX.first)
                 {
@@ -211,13 +256,11 @@ namespace Fx
         // topological sort setup
 
         std::vector<FxInstanceId> tasks;
-        tasks.reserve(chainBack.size());
-
-        chainFront = std::vector<FxDescriptor *>(chainBack.size(), nullptr);
+        tasks.reserve(chainBackCopy.size());
 
         std::set<std::pair<FxInstanceId, FxInstanceId> > dependencies;
 
-        for (auto &fx: chainBack)
+        for (auto &fx: chainBackCopy)
         {
             auto instanceId = fx->instanceId;
 
@@ -273,6 +316,7 @@ namespace Fx
         result.pop_front();
 
         chainBack.clear();
+        chainFront.clear();
         fxIdToFxMap.clear();
 
         auto i = 0;
@@ -280,7 +324,9 @@ namespace Fx
         {
             auto fx = idToInstanceMap[instanceId];
             addFxNoOptimize(fx);
-            chainFront[i++] = idToInstanceMap[instanceId];
+            chainFront.push_back(idToInstanceMap[instanceId]);
+
+            i++;
         }
 
         return isFrontChainValid = true;

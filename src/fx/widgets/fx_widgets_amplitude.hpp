@@ -13,17 +13,17 @@
 
 namespace Fx
 {
-    class FxGfxFxWidgetGain : public FxWidget
+    class FxWidgetGain : public FxWidget
     {
         public:
         QDial* dial;
 
-        explicit FxGfxFxWidgetGain(FxMainWindow *pParent);
+        explicit FxWidgetGain(FxMainWindow *pParent);
 
         void render(QPainter &pPainter) override;
         FxDescriptorGain::FxParamsGain* getParams() const;
 
-        ~FxGfxFxWidgetGain();
+        ~FxWidgetGain();
     };
 }
 

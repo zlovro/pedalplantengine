@@ -53,7 +53,7 @@ namespace Fx
 
     FxMainWindow *FxMainWindow::instance = nullptr;
 
-    FxMainWindow::FxMainWindow(const QPen& pDefaultPen) : QMainWindow()
+    FxMainWindow::FxMainWindow(const QPen &pDefaultPen) : QMainWindow()
     {
         instance = this;
 
@@ -118,7 +118,7 @@ namespace Fx
         return list;
     }
 
-    bool FxMainWindow::canConnectFx(FxWidget::ConnectorPoint *pSrc, FxWidget::ConnectorPoint *pDst)
+    bool FxMainWindow::canConnectFx(FxWidget::ConnectorPoint *pSrc, FxWidget::ConnectorPoint *pDst) const
     {
         bool srcAsIn = pSrc->type == FxWidget::CONN_INPUT && pDst->type == FxWidget::CONN_OUTPUT;
         bool dstAsIn = pSrc->type == FxWidget::CONN_OUTPUT && pDst->type == FxWidget::CONN_INPUT;
@@ -175,8 +175,14 @@ namespace Fx
     }
 
     // rendering, gfx, gui code
-    FxWidget::FxWidget(FxMainWindow *pParent)
+    std::map<FxInstanceId, FxWidget *> FxWidget::fxIdToWidgetMap = std::map<FxInstanceId, FxWidget *>();
+
+    FxWidget::FxWidget(FxMainWindow *pParent, FxDescriptor *pDsc = nullptr)
     {
+        if ((fxDsc = pDsc))
+        {
+            fxIdToWidgetMap[pDsc->instanceId] = this;
+        }
         setParent(pParent);
 
         this->setContextMenuPolicy(Qt::CustomContextMenu);
@@ -187,7 +193,6 @@ namespace Fx
         widgetType          = WIDGET_REGULAR;
         wndParent           = pParent;
         currentConnectorIdx = -1;
-        fxDsc               = nullptr;
         connectors          = std::array<ConnectorPoint, 4>();
 
         for (auto &connector: connectors)
@@ -485,6 +490,11 @@ namespace Fx
         gFxChain.optimize();
     }
 
+    void FxWidget::addToFxChainNoOptimize() const
+    {
+        gFxChain.addFxNoOptimize(fxDsc);
+    }
+
     void FxWidget::resizeEvent(QResizeEvent *event)
     {
         QWidget::resizeEvent(event);
@@ -661,7 +671,7 @@ namespace Fx
         origin = FX_INVALID_INSTANCE_ID;
     }
 
-    FxWidget::ConnectorPoint * FxWidget::ConnectorPoint::withType(ConnectorType pNewType)
+    FxWidget::ConnectorPoint *FxWidget::ConnectorPoint::withType(ConnectorType pNewType)
     {
         type = pNewType;
         if (pNewType == CONN_OUTPUT && parent->widgetType == WIDGET_REGULAR)
@@ -697,6 +707,8 @@ namespace Fx
 
     FxWidgetIn::FxWidgetIn(FxMainWindow *pParent): FxWidget(pParent)
     {
+        fxIdToWidgetMap[gFxInputInstanceId] = this;
+
         instance = this;
 
         setCursor(Qt::ArrowCursor);
@@ -786,7 +798,7 @@ namespace Fx
 
     void FxMainWindow::addGain()
     {
-        auto widget = new FxGfxFxWidgetGain(this);
+        auto widget = new FxWidgetGain(this);
         widget->show();
 
         gFxChain.addFxNoOptimize(widget->fxDsc);
