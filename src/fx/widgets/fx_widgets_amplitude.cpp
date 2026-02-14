@@ -5,9 +5,9 @@
 
 #include "fx_widgets_amplitude.hpp"
 
-namespace Fx::Gfx
+namespace Fx
 {
-    FxGfxFxWidgetGain::FxGfxFxWidgetGain(FxGfxMainWindow *pParent): FxGfxFxWidget(pParent)
+    FxGfxFxWidgetGain::FxGfxFxWidgetGain(FxMainWindow *pParent): FxWidget(pParent)
     {
         fxDsc = new FxDescriptorGain();
 

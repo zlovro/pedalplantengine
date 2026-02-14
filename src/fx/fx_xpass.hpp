@@ -87,14 +87,14 @@ namespace Fx
         typedef struct FxParamsHighPassFirstOrder
         {
             // dont serialize
-            float lastSample;
+            std::array<float, 2> lastSamples{};
 
             float cutoffFreq;
 
             explicit FxParamsHighPassFirstOrder(float pCutoff)
             {
-                lastSample = 0;
-                cutoffFreq = pCutoff;
+                lastSamples = std::array<float, 2>{0, 0};
+                cutoffFreq  = pCutoff;
             }
         } FxParamsHighPassFirstOrder;
 
@@ -111,14 +111,14 @@ namespace Fx
                 auto samplingPeriod = 1.0F / (float) pSampleRate;
                 auto a              = 1.0F / (1 + 2 * (float) M_PI * samplingPeriod * params->cutoffFreq);
 
-                pOut[0] = params->lastSample;
+                pOut[0] = params->lastSamples[pCh];
 
                 for (int i = 1; i < pBufSz; ++i)
                 {
                     pOut[i] = a * pOut[i - 1] + a * (pIn[i] - pIn[i - 1]);
                 }
 
-                params->lastSample = pOut[pBufSz - 1];
+                params->lastSamples[pCh] = pOut[pBufSz - 1];
             };
         }
 

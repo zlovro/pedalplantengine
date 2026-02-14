@@ -9,6 +9,8 @@
 #include <asio.h>
 #include <json.hpp>
 
+#include "event.hpp"
+
 typedef enum
 {
     ERR_OK,
@@ -58,5 +60,7 @@ extern ASIODriverInfoEx gAsioDrvInfEx;
 
 void mainUpdateBuffers();
 void mainDestroyFxChain();
+
+extern Event gEventMainWindowAfterInit;
 
 #endif //MAIN_HPP

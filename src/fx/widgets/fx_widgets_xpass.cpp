@@ -5,7 +5,7 @@
 
 #include "fx_widgets_xpass.hpp"
 
-Fx::Gfx::FxGfxFxWidgetHighPass1::FxGfxFxWidgetHighPass1(FxGfxMainWindow *pParent) : FxGfxFxWidget(pParent)
+Fx::FxWidgetHipass1::FxWidgetHipass1(FxMainWindow *pParent) : FxWidget(pParent)
 {
     resize(width() * 1.2, std::max(height(), FX_WIDGET_DIAL_SIZE * 2 + FX_WIDGET_DIAL_MARGIN * 2));
 
@@ -26,7 +26,7 @@ Fx::Gfx::FxGfxFxWidgetHighPass1::FxGfxFxWidgetHighPass1(FxGfxMainWindow *pParent
     dial->show();
 }
 
-void Fx::Gfx::FxGfxFxWidgetHighPass1::render(QPainter &pPainter)
+void Fx::FxWidgetHipass1::render(QPainter &pPainter)
 {
     auto dialY = dial->y();
     pPainter.drawText(QRect{0, FX_WIDGET_DIAL_MARGIN, width(), dialY - FX_WIDGET_DIAL_MARGIN}, Qt::AlignCenter, "HIPASS1");
@@ -37,11 +37,11 @@ void Fx::Gfx::FxGfxFxWidgetHighPass1::render(QPainter &pPainter)
     pPainter.drawText(QRect{0, dialY - FX_WIDGET_DIAL_MARGIN, width(), FX_WIDGET_DIAL_MARGIN}, Qt::AlignCenter, QString::fromStdString(dialText));
 }
 
-Fx::FxDescriptorHighPassFilterFirstOrder::FxParamsHighPassFirstOrder *Fx::Gfx::FxGfxFxWidgetHighPass1::getParams() const
+Fx::FxDescriptorHighPassFilterFirstOrder::FxParamsHighPassFirstOrder *Fx::FxWidgetHipass1::getParams() const
 {
     return (FxDescriptorHighPassFilterFirstOrder::FxParamsHighPassFirstOrder *) fxDsc->params;
 }
 
-Fx::Gfx::FxGfxFxWidgetHighPass1::~FxGfxFxWidgetHighPass1()
+Fx::FxWidgetHipass1::~FxWidgetHipass1()
 {
 }

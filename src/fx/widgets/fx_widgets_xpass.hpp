@@ -13,19 +13,19 @@
 
 #include "fx/fx_xpass.hpp"
 
-namespace Fx::Gfx
+namespace Fx
 {
-    class FxGfxFxWidgetHighPass1 : public FxGfxFxWidget
+    class FxWidgetHipass1 : public FxWidget
     {
         public:
         QDial* dial;
 
-        explicit FxGfxFxWidgetHighPass1(FxGfxMainWindow *pParent);
+        explicit FxWidgetHipass1(FxMainWindow *pParent);
 
         void render(QPainter &pPainter) override;
         FxDescriptorHighPassFilterFirstOrder::FxParamsHighPassFirstOrder* getParams() const;
 
-        ~FxGfxFxWidgetHighPass1();
+        ~FxWidgetHipass1();
     };
 }
 

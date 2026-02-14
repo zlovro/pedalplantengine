@@ -80,9 +80,10 @@ namespace Fx
 
     FxChain::FxChain()
     {
-        chainBack   = std::vector<FxDescriptor *>();
-        chainFront  = std::vector<FxDescriptor *>();
-        fxIdToFxMap = std::map<FxInstanceId, FxDescriptor *>();
+        isFrontChainValid = false;
+        chainBack         = std::vector<FxDescriptor *>();
+        chainFront        = std::vector<FxDescriptor *>();
+        fxIdToFxMap       = std::map<FxInstanceId, FxDescriptor *>();
     }
 
     void FxChain::addFxNoOptimize(FxDescriptor *pFx)
@@ -91,7 +92,7 @@ namespace Fx
         fxIdToFxMap[pFx->instanceId] = pFx;
     }
 
-    void FxChain::optimize()
+    bool FxChain::optimize()
     {
         std::map<FxInstanceId, FxDescriptor *> idToInstanceMap;
 
@@ -102,9 +103,9 @@ namespace Fx
 
         // remove leaf nodes
         FxInstanceId out = FX_INVALID_INSTANCE_ID;
-        for (const auto &x: Gfx::FxGfxFxWidgetOutput::instance->connectors)
+        for (const auto &x: FxWidgetOut::instance->connectors)
         {
-            if (x.type == Gfx::FxGfxFxWidget::CONN_INPUT)
+            if (x.type == FxWidget::CONN_INPUT)
             {
                 out = x.origin;
                 break;
@@ -113,7 +114,7 @@ namespace Fx
 
         if (out == FX_INVALID_INSTANCE_ID)
         {
-            return;
+            return isFrontChainValid = false;
         }
 
         std::deque<FxInstanceId> q;
@@ -123,6 +124,11 @@ namespace Fx
 
         while (true)
         {
+            if (!idToInstanceMap.contains(currentRoot))
+            {
+                return isFrontChainValid = false;
+            }
+
             auto parents = currentRoot == gFxInputInstanceId ? std::vector<FxInstanceId>{} : idToInstanceMap[currentRoot]->inputs;
 
             auto allParentsExplored = true;
@@ -177,7 +183,7 @@ namespace Fx
 
         if (!explored.contains(gFxInputInstanceId))
         {
-            return;
+            return isFrontChainValid = false;;
         }
 
         explored.emplace(out);
@@ -276,6 +282,8 @@ namespace Fx
             addFxNoOptimize(fx);
             chainFront[i++] = idToInstanceMap[instanceId];
         }
+
+        return isFrontChainValid = true;
     }
 
     void FxChain::copyBackChainToFrontOptimize()

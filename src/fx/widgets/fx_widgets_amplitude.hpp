@@ -11,14 +11,14 @@
 
 #include <QDial>
 
-namespace Fx::Gfx
+namespace Fx
 {
-    class FxGfxFxWidgetGain : public FxGfxFxWidget
+    class FxGfxFxWidgetGain : public FxWidget
     {
         public:
         QDial* dial;
 
-        explicit FxGfxFxWidgetGain(FxGfxMainWindow *pParent);
+        explicit FxGfxFxWidgetGain(FxMainWindow *pParent);
 
         void render(QPainter &pPainter) override;
         FxDescriptorGain::FxParamsGain* getParams() const;

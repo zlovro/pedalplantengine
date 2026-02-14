@@ -14,9 +14,9 @@
 
 #include <fx/fx.hpp>
 
-namespace Fx::Gfx
+namespace Fx
 {
-    class FxGfxFxWidgetInput;
+    class FxWidgetIn;
     extern const char *FX_FONT_FAMILY;
     extern const int   FX_FONT_SIZE;
     extern const int   FX_FONT_SIZE_SMALL;
@@ -25,7 +25,7 @@ namespace Fx::Gfx
     extern const QFont FX_BOLD_FONT;
     extern const QFont FX_BOLD_FONT_SMALL;
 
-    class FxGfxMainWindow;
+    class FxMainWindow;
 
     extern const QColor FX_WIDGET_FILL_COLOR;
 
@@ -45,7 +45,7 @@ namespace Fx::Gfx
     inline constexpr int FX_WIDGET_DIAL_MARGIN = 30;
     extern const int     FX_WIDGET_OUTLINE_WIDTH;
 
-    class FxGfxFxWidget : public QWidget
+    class FxWidget : public QWidget
     {
         public:
         typedef enum FxWidgetType
@@ -67,7 +67,7 @@ namespace Fx::Gfx
         class ConnectorPoint
         {
             public:
-            FxGfxFxWidget *parent;
+            FxWidget *parent;
 
             QRect localRect;
             QRect globalRect;
@@ -75,23 +75,25 @@ namespace Fx::Gfx
             ConnectorType type;
             FxInstanceId  origin;
 
-            explicit ConnectorPoint(FxGfxFxWidget *pParent = nullptr);
+            explicit ConnectorPoint(FxWidget *pParent = nullptr);
+
+            ConnectorPoint *withType(ConnectorType pNewType);
         };
 
-        FxGfxMainWindow *wndParent;
-        FxDescriptor *   fxDsc;
+        FxMainWindow *wndParent;
+        FxDescriptor *fxDsc;
 
-        bool justAdded;
+        bool justAdded, moveAroundOnSpawn;
         int  currentConnectorIdx;
 
         FxWidgetType                  widgetType;
         std::array<ConnectorPoint, 4> connectors;
 
-        explicit FxGfxFxWidget(FxGfxMainWindow *pParent);
+        explicit FxWidget(FxMainWindow *pParent);
 
-        virtual void render(QPainter &pPainter)
-        {
-        };
+        virtual void render(QPainter &pPainter);
+
+        ConnectorPoint *connectorRight, *connectorLeft, *connectorTop, *connectorBottom;
 
         void showCtxMenu(QPoint pPoint);
         void onCtxMenuItemChecked();
@@ -109,6 +111,7 @@ namespace Fx::Gfx
         QPoint getLocalCentre() const;
 
         void updateConnectorPositions();
+        void updateConnectorLocalRects() const;
         void moveToCentre();
 
         private:
@@ -116,67 +119,67 @@ namespace Fx::Gfx
     };
 
     // singleton
-    class FxGfxFxWidgetInput : public FxGfxFxWidget
+    class FxWidgetIn : public FxWidget
     {
         public:
-        static FxGfxFxWidgetInput *instance;
+        static FxWidgetIn *instance;
 
-        explicit FxGfxFxWidgetInput(FxGfxMainWindow *pParent);
+        explicit FxWidgetIn(FxMainWindow *pParent);
 
         void render(QPainter &pPainter) override;
 
-        ~FxGfxFxWidgetInput() override;
+        ~FxWidgetIn() override;
     };
 
-    class FxGfxFxWidgetOutput : public FxGfxFxWidget
+    class FxWidgetOut : public FxWidget
     {
         public:
-        static FxGfxFxWidgetOutput *instance;
+        static FxWidgetOut *instance;
 
-        explicit FxGfxFxWidgetOutput(FxGfxMainWindow *pParent);
+        explicit FxWidgetOut(FxMainWindow *pParent);
 
         void render(QPainter &pPainter) override;
 
-        ~FxGfxFxWidgetOutput() override;
+        ~FxWidgetOut() override;
     };
 
     // singleton
-    class FxGfxMainWindow : public QMainWindow
+    class FxMainWindow : public QMainWindow
     {
         public:
-        static FxGfxMainWindow *instance;
+        static FxMainWindow *instance;
 
         class ConnectingLine
         {
             public:
-            FxGfxFxWidget::ConnectorPoint *a, *b;
+            FxWidget::ConnectorPoint *a, *b;
 
-            ConnectingLine(FxGfxFxWidget::ConnectorPoint *pA, FxGfxFxWidget::ConnectorPoint *pB);
+            ConnectingLine(FxWidget::ConnectorPoint *pA, FxWidget::ConnectorPoint *pB);
         };
 
-        bool                           isDrawing;
-        FxGfxFxWidget::ConnectorPoint *drawingOriginConnector;
-        QPen                           drawingPen;
+        bool                      isDrawing;
+        FxWidget::ConnectorPoint *drawingOriginConnector;
+        QPen                      drawingPen, defaultPen;
 
         // do not add or remove, only read
         std::vector<ConnectingLine *> connectingLines;
 
-        FxGfxMainWindow();
-        ~FxGfxMainWindow();
+        FxMainWindow(const QPen& pDefaultPen);
+        ~FxMainWindow();
 
-        void startDrawing(FxGfxFxWidget::ConnectorPoint *pSourceConnector, const QPen &pPen);
+        void startDrawing(FxWidget::ConnectorPoint *pSourceConnector, const QPen &pPen);
         void cancelDrawing();
         void stopDrawing();
 
-        std::vector<ConnectingLine *> getLinesOnConnector(const FxGfxFxWidget::ConnectorPoint *pPoint) const;
+        std::vector<ConnectingLine *> getLinesOnConnector(const FxWidget::ConnectorPoint *pPoint) const;
 
-        bool canConnectFx(FxGfxFxWidget::ConnectorPoint *pSrc, FxGfxFxWidget::ConnectorPoint *pDst);
+        bool canConnectFx(FxWidget::ConnectorPoint *pSrc, FxWidget::ConnectorPoint *pDst);
 
         // you MUST call canConnectFx before calling this.
-        void connectFx(FxGfxFxWidget::ConnectorPoint *pSrc, FxGfxFxWidget::ConnectorPoint *pDst);
+        void connectFx(FxWidget::ConnectorPoint *pSrc, FxWidget::ConnectorPoint *pDst);
 
         void showCtxMenu(QPoint);
-        void addActionSimple(QMenu *pMenu, const QString &pLabel, void (FxGfxMainWindow::*pFunc)()) const;
+        void addActionSimple(QMenu *pMenu, const QString &pLabel, void (FxMainWindow::*pFunc)()) const;
 
         void addGain();
         void addBezier();

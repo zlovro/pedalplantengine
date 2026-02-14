@@ -70,13 +70,18 @@ namespace Fx
         // dont add or remove from this map - only use it for iteration
         std::map<FxInstanceId, FxDescriptor *> fxIdToFxMap;
 
+        bool isFrontChainValid;
+
         FxChain();
 
         // adds an element to the back chain without calling optimize(). useful for multiple adds
         void addFxNoOptimize(FxDescriptor *pFx);
 
-        // modifies back chain. should (or must) be called before processing (preferably after adding/removing/inserting/changing chain). organizes the chain such that no element tries to capture output from an unprocessed fx
-        void optimize();
+        /**
+         * modifies back chain. should (or must) be called before processing (preferably after adding/removing/inserting/changing chain). organizes the chain such that no element tries to capture output from an unprocessed fx
+         * @return FxChain::isFrontChainValid
+         */
+        bool optimize();
 
         void copyBackChainToFrontOptimize();
 

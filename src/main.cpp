@@ -21,9 +21,13 @@
 #include <fx_gfx.hpp>
 #include <main.hpp>
 
+#include "fx/widgets/fx_widgets_xpass.hpp"
+
 #if WINDOWS
 #define sleepMs(x) Sleep(x)
 #endif
+
+extern Event gEventMainWindowAfterInit("MainWindow.afterInit");
 
 uint64_t gTimeMs = 0;
 
@@ -115,13 +119,18 @@ void mainDestroyFxChain()
 
 void processChannel(int pCh)
 {
-    auto out = gOutBuf[pCh];
-    auto in  = gInBuf[pCh];
+    auto out   = gOutBuf[pCh];
+    auto bufSz = gAsioDrvInfEx.actualBufSz;
 
-    // auto workIn  = gWorkBuf[pCh];
-    auto workOut = gWorkBuf[pCh];
+    if (!Fx::gFxChain.isFrontChainValid)
+    {
+        memset(out, 0, sizeof(float) * bufSz);
+        return;
+    }
 
-    auto bufSz      = gAsioDrvInfEx.actualBufSz;
+    auto in   = gInBuf[pCh];
+    auto work = gWorkBuf[pCh];
+
     auto sampleRate = gAsioDrvInfEx.sampleRate;
 
     for (const auto &fx: Fx::gFxChain.chainFront)
@@ -132,11 +141,11 @@ void processChannel(int pCh)
             inputs.push_back(input == Fx::gFxInputInstanceId ? in : Fx::gFxChain.fxIdToFxMap[input]->lastOutput[pCh]);
         }
 
-        fx->processor(inputs, workOut, bufSz, sampleRate, fx->params, pCh);
-        memcpy(fx->lastOutput[pCh], workOut, sizeof(float) * bufSz);
+        fx->processor(inputs, work, bufSz, sampleRate, fx->params, pCh);
+        memcpy(fx->lastOutput[pCh], work, sizeof(float) * bufSz);
     }
 
-    memcpy(out, workOut, bufSz * sizeof(float));
+    memcpy(out, work, bufSz * sizeof(float));
 }
 
 void process()
@@ -403,9 +412,28 @@ void testChainDeserializer()
 //     Fx::gFxChain.addFxNoOptimize(gain)
 // }
 
+void testHipass()
+{
+    auto mainWnd = Fx::FxMainWindow::instance;
+
+    auto hp = new Fx::FxWidgetHipass1(mainWnd);
+    hp->move(mainWnd->rect().center());
+    hp->moveAroundOnSpawn = false;
+    hp->show();
+
+    Fx::gFxChain.addFxNoOptimize(hp->fxDsc);
+
+    mainWnd->connectFx(Fx::FxWidgetIn::instance->connectorRight->withType(Fx::FxWidget::CONN_OUTPUT), hp->connectorLeft->withType(Fx::FxWidget::CONN_INPUT));
+    mainWnd->connectFx(hp->connectorRight->withType(Fx::FxWidget::CONN_OUTPUT), Fx::FxWidgetOut::instance->connectorLeft->withType(Fx::FxWidget::CONN_INPUT));
+
+    Fx::gFxChain.optimize();
+}
+
 errCode main2(int argc, char *argv[])
 {
     Fx::init();
+
+    gEventMainWindowAfterInit.registerCall(testHipass);
 
     // testChainOptimizer();
     // testChainDeserializer();
@@ -485,10 +513,9 @@ errCode main2(int argc, char *argv[])
     }
 
     QApplication qtApp(argc, argv);
-
     QApplication::setStyle(QStyleFactory::create("Fusion"));
 
-    Fx::Gfx::FxGfxMainWindow mainWindow;
+    Fx::FxMainWindow mainWindow(QPen{Qt::black, 3});
     mainWindow.show();
 
     long desiredFrameDurationUs = 1'000'000 / 144;
@@ -534,6 +561,13 @@ errCode main2(int argc, char *argv[])
     {
         asioDeinitDrivers();
     }
+
+    for (const auto &event: Event::instances)
+    {
+        delete event;
+    }
+
+    Event::instances.clear();
 
     return ERR_OK;
 }

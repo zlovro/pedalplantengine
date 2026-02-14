@@ -37,6 +37,8 @@ add_executable(pedalplantengine
         src/main.hpp
         src/fx/widgets/fx_widgets_xpass.cpp
         src/fx/widgets/fx_widgets_xpass.hpp
+        src/event.cpp
+        src/event.hpp
         #        ASIOSDK/host/sample/hostsample.cpp
 )
 

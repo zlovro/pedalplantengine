@@ -18,7 +18,7 @@
 
 #include "fx/widgets/fx_widgets_xpass.hpp"
 
-namespace Fx::Gfx
+namespace Fx
 {
     const char *  FX_FONT_FAMILY     = "Consolas";
     constexpr int FX_FONT_SIZE       = 12;
@@ -45,17 +45,19 @@ namespace Fx::Gfx
     extern const int FX_WIDGET_DEFAULT_WIDTH  = 120;
     extern const int FX_WIDGET_DEFAULT_HEIGHT = 80;
 
-    FxGfxMainWindow::ConnectingLine::ConnectingLine(FxGfxFxWidget::ConnectorPoint *pA, FxGfxFxWidget::ConnectorPoint *pB)
+    FxMainWindow::ConnectingLine::ConnectingLine(FxWidget::ConnectorPoint *pA, FxWidget::ConnectorPoint *pB)
     {
         a = pA;
         b = pB;
     }
 
-    FxGfxMainWindow *FxGfxMainWindow::instance = nullptr;
+    FxMainWindow *FxMainWindow::instance = nullptr;
 
-    FxGfxMainWindow::FxGfxMainWindow() : QMainWindow()
+    FxMainWindow::FxMainWindow(const QPen& pDefaultPen) : QMainWindow()
     {
         instance = this;
+
+        defaultPen = pDefaultPen;
 
         isDrawing              = false;
         drawingOriginConnector = nullptr;
@@ -65,16 +67,18 @@ namespace Fx::Gfx
         this->setContextMenuPolicy(Qt::CustomContextMenu);
         connect(this, customContextMenuRequested, this, showCtxMenu);
 
-        auto inWidget = new FxGfxFxWidgetInput(this);
+        auto inWidget = new FxWidgetIn(this);
         inWidget->show();
 
-        auto outWidget = new FxGfxFxWidgetOutput(this);
+        auto outWidget = new FxWidgetOut(this);
         outWidget->show();
 
         setMouseTracking(true);
+
+        gEventMainWindowAfterInit.trigger();
     }
 
-    FxGfxMainWindow::~FxGfxMainWindow()
+    FxMainWindow::~FxMainWindow()
     {
         for (auto &x: connectingLines)
         {
@@ -84,7 +88,7 @@ namespace Fx::Gfx
         connectingLines.clear();
     }
 
-    void FxGfxMainWindow::startDrawing(FxGfxFxWidget::ConnectorPoint *pSourceConnector, const QPen &pPen)
+    void FxMainWindow::startDrawing(FxWidget::ConnectorPoint *pSourceConnector, const QPen &pPen)
     {
         isDrawing              = true;
         drawingOriginConnector = pSourceConnector;
@@ -93,14 +97,14 @@ namespace Fx::Gfx
         drawingPen.setCapStyle(Qt::RoundCap);
     }
 
-    void FxGfxMainWindow::cancelDrawing()
+    void FxMainWindow::cancelDrawing()
     {
         isDrawing              = false;
         drawingOriginConnector = nullptr;
         update();
     }
 
-    std::vector<FxGfxMainWindow::ConnectingLine *> FxGfxMainWindow::getLinesOnConnector(const FxGfxFxWidget::ConnectorPoint *pPoint) const
+    std::vector<FxMainWindow::ConnectingLine *> FxMainWindow::getLinesOnConnector(const FxWidget::ConnectorPoint *pPoint) const
     {
         std::vector<ConnectingLine *> list;
         for (auto x: connectingLines)
@@ -114,10 +118,10 @@ namespace Fx::Gfx
         return list;
     }
 
-    bool FxGfxMainWindow::canConnectFx(FxGfxFxWidget::ConnectorPoint *pSrc, FxGfxFxWidget::ConnectorPoint *pDst)
+    bool FxMainWindow::canConnectFx(FxWidget::ConnectorPoint *pSrc, FxWidget::ConnectorPoint *pDst)
     {
-        bool srcAsIn = pSrc->type == FxGfxFxWidget::CONN_INPUT && pDst->type == FxGfxFxWidget::CONN_OUTPUT;
-        bool dstAsIn = pSrc->type == FxGfxFxWidget::CONN_OUTPUT && pDst->type == FxGfxFxWidget::CONN_INPUT;
+        bool srcAsIn = pSrc->type == FxWidget::CONN_INPUT && pDst->type == FxWidget::CONN_OUTPUT;
+        bool dstAsIn = pSrc->type == FxWidget::CONN_OUTPUT && pDst->type == FxWidget::CONN_INPUT;
 
         if (srcAsIn || dstAsIn)
         {
@@ -135,10 +139,10 @@ namespace Fx::Gfx
         return false;
     }
 
-    void FxGfxMainWindow::connectFx(FxGfxFxWidget::ConnectorPoint *pSrc, FxGfxFxWidget::ConnectorPoint *pDst)
+    void FxMainWindow::connectFx(FxWidget::ConnectorPoint *pSrc, FxWidget::ConnectorPoint *pDst)
     {
-        FxGfxFxWidget::ConnectorPoint *in, *out;
-        if (pSrc->type == FxGfxFxWidget::CONN_INPUT)
+        FxWidget::ConnectorPoint *in, *out;
+        if (pSrc->type == FxWidget::CONN_INPUT)
         {
             in  = pSrc;
             out = pDst;
@@ -151,7 +155,7 @@ namespace Fx::Gfx
 
         auto line = new ConnectingLine(pSrc, pDst);
 
-        if (in->parent->widgetType != FxGfxFxWidget::WIDGET_OUTPUT)
+        if (in->parent->widgetType != FxWidget::WIDGET_OUTPUT)
         {
             auto inParent = in->parent->fxDsc->instanceId;
             gFxChain.fxIdToFxMap[inParent]->inputs.push_back(out->origin);
@@ -165,13 +169,13 @@ namespace Fx::Gfx
         isDrawing = false;
     }
 
-    QPoint FxGfxMainWindow::getCenter() const
+    QPoint FxMainWindow::getCenter() const
     {
         return {size().width() / 2, size().height() / 2};
     }
 
     // rendering, gfx, gui code
-    FxGfxFxWidget::FxGfxFxWidget(FxGfxMainWindow *pParent)
+    FxWidget::FxWidget(FxMainWindow *pParent)
     {
         setParent(pParent);
 
@@ -179,6 +183,7 @@ namespace Fx::Gfx
         connect(this, customContextMenuRequested, this, showCtxMenu);
 
         justAdded           = true;
+        moveAroundOnSpawn   = true;
         widgetType          = WIDGET_REGULAR;
         wndParent           = pParent;
         currentConnectorIdx = -1;
@@ -191,6 +196,11 @@ namespace Fx::Gfx
             connector.type   = CONN_UNCONNECTED;
         }
 
+        connectorRight  = connectors.data() + 0;
+        connectorLeft   = connectors.data() + 1;
+        connectorTop    = connectors.data() + 2;
+        connectorBottom = connectors.data() + 3;
+
         setMouseTracking(true);
 
         resize(FX_WIDGET_DEFAULT_WIDTH, FX_WIDGET_DEFAULT_HEIGHT);
@@ -200,9 +210,16 @@ namespace Fx::Gfx
         move(cursor.x() - width() / 2, cursor.y() - height() / 2);
 
         setCursor(Qt::SizeAllCursor);
+
+        updateConnectorLocalRects();
+        updateConnectorPositions();
     }
 
-    void FxGfxMainWindow::paintEvent(QPaintEvent *event)
+    void FxWidget::render(QPainter &pPainter)
+    {
+    }
+
+    void FxMainWindow::paintEvent(QPaintEvent *event)
     {
         QMainWindow::paintEvent(event);
 
@@ -215,7 +232,7 @@ namespace Fx::Gfx
             auto p3 = QPoint{(p1.x() + p4.x()) / 2, p4.y()};
             auto p2 = QPoint{p3.x(), p1.y()};
 
-            drawBezier(painter, std::vector{p1, p2, p3, p4}, drawingPen);
+            drawBezier(painter, std::vector{p1, p2, p3, p4}, defaultPen);
         }
 
         if (isDrawing)
@@ -229,7 +246,7 @@ namespace Fx::Gfx
         }
     }
 
-    void FxGfxMainWindow::mouseMoveEvent(QMouseEvent *event)
+    void FxMainWindow::mouseMoveEvent(QMouseEvent *event)
     {
         QMainWindow::mouseMoveEvent(event);
 
@@ -239,7 +256,7 @@ namespace Fx::Gfx
         }
     }
 
-    void FxGfxMainWindow::mousePressEvent(QMouseEvent *event)
+    void FxMainWindow::mousePressEvent(QMouseEvent *event)
     {
         QMainWindow::mousePressEvent(event);
 
@@ -252,7 +269,7 @@ namespace Fx::Gfx
         }
     }
 
-    void FxGfxMainWindow::keyReleaseEvent(QKeyEvent *event)
+    void FxMainWindow::keyReleaseEvent(QKeyEvent *event)
     {
         QMainWindow::keyReleaseEvent(event);
 
@@ -271,7 +288,7 @@ namespace Fx::Gfx
 
         // how many lines fit in one height or width of the window
         constexpr int LINE_DENSITY  = 50;
-        int           segmentLength = std::min(FxGfxMainWindow::instance->width(), FxGfxMainWindow::instance->height()) / LINE_DENSITY;
+        int           segmentLength = std::min(FxMainWindow::instance->width(), FxMainWindow::instance->height()) / LINE_DENSITY;
 
         auto da           = finalPoint.x() - previousPoint.x();
         auto db           = finalPoint.y() - previousPoint.y();
@@ -314,7 +331,7 @@ namespace Fx::Gfx
         }
     }
 
-    void FxGfxFxWidget::showCtxMenu(QPoint pPoint)
+    void FxWidget::showCtxMenu(QPoint pPoint)
     {
         if (currentConnectorIdx != -1)
         {
@@ -349,7 +366,7 @@ namespace Fx::Gfx
         }
     }
 
-    void FxGfxFxWidget::onCtxMenuItemChecked()
+    void FxWidget::onCtxMenuItemChecked()
     {
         auto          oldType = connectors[currentConnectorIdx].type;
         ConnectorType newType = CONN_INVALID;
@@ -450,7 +467,7 @@ namespace Fx::Gfx
         update();
     }
 
-    void FxGfxFxWidget::disconnectConnector(ConnectorPoint *pPoint) const
+    void FxWidget::disconnectConnector(ConnectorPoint *pPoint) const
     {
         pPoint->type   = CONN_UNCONNECTED;
         pPoint->origin = FX_INVALID_INSTANCE_ID;
@@ -468,29 +485,15 @@ namespace Fx::Gfx
         gFxChain.optimize();
     }
 
-    void FxGfxFxWidget::resizeEvent(QResizeEvent *event)
+    void FxWidget::resizeEvent(QResizeEvent *event)
     {
         QWidget::resizeEvent(event);
 
-        auto cx = width() / 2;
-        auto cy = height() / 2;
-
-        // top centre
-        connectors[0].localRect = {cx - FX_WIDGET_CONNECTOR_RADIUS_SIDES, 0, FX_WIDGET_CONNECTOR_RADIUS_SIDES * 2, FX_WIDGET_CONNECTOR_RADIUS_VERTICAL};
-
-        // bottom centre
-        connectors[1].localRect = {cx - FX_WIDGET_CONNECTOR_RADIUS_SIDES, height() - FX_WIDGET_CONNECTOR_RADIUS_VERTICAL, FX_WIDGET_CONNECTOR_RADIUS_SIDES * 2, FX_WIDGET_CONNECTOR_RADIUS_VERTICAL};
-
-        // right centre
-        connectors[2].localRect = {width() - FX_WIDGET_CONNECTOR_RADIUS_VERTICAL, cy - FX_WIDGET_CONNECTOR_RADIUS_SIDES, FX_WIDGET_CONNECTOR_RADIUS_VERTICAL, FX_WIDGET_CONNECTOR_RADIUS_SIDES * 2};
-
-        // left centre
-        connectors[3].localRect = {0, cy - FX_WIDGET_CONNECTOR_RADIUS_SIDES, FX_WIDGET_CONNECTOR_RADIUS_VERTICAL, FX_WIDGET_CONNECTOR_RADIUS_SIDES * 2};
-
+        updateConnectorLocalRects();
         updateConnectorPositions();
     }
 
-    void FxGfxFxWidget::moveEvent(QMoveEvent *event)
+    void FxWidget::moveEvent(QMoveEvent *event)
     {
         QWidget::moveEvent(event);
 
@@ -498,7 +501,7 @@ namespace Fx::Gfx
         wndParent->update();
     }
 
-    void FxGfxFxWidget::updateConnectorPositions()
+    void FxWidget::updateConnectorPositions()
     {
         for (auto &conn: connectors)
         {
@@ -506,7 +509,18 @@ namespace Fx::Gfx
         }
     }
 
-    void FxGfxFxWidget::paintEvent(QPaintEvent *event)
+    void FxWidget::updateConnectorLocalRects() const
+    {
+        auto cx = width() / 2;
+        auto cy = height() / 2;
+
+        connectorTop->localRect    = {cx - FX_WIDGET_CONNECTOR_RADIUS_SIDES, 0, FX_WIDGET_CONNECTOR_RADIUS_SIDES * 2, FX_WIDGET_CONNECTOR_RADIUS_VERTICAL};
+        connectorBottom->localRect = {cx - FX_WIDGET_CONNECTOR_RADIUS_SIDES, height() - FX_WIDGET_CONNECTOR_RADIUS_VERTICAL, FX_WIDGET_CONNECTOR_RADIUS_SIDES * 2, FX_WIDGET_CONNECTOR_RADIUS_VERTICAL};
+        connectorRight->localRect  = {width() - FX_WIDGET_CONNECTOR_RADIUS_VERTICAL, cy - FX_WIDGET_CONNECTOR_RADIUS_SIDES, FX_WIDGET_CONNECTOR_RADIUS_VERTICAL, FX_WIDGET_CONNECTOR_RADIUS_SIDES * 2};
+        connectorLeft->localRect   = {0, cy - FX_WIDGET_CONNECTOR_RADIUS_SIDES, FX_WIDGET_CONNECTOR_RADIUS_VERTICAL, FX_WIDGET_CONNECTOR_RADIUS_SIDES * 2};
+    }
+
+    void FxWidget::paintEvent(QPaintEvent *event)
     {
         QPainter painter(this);
         painter.setRenderHint(QPainter::Antialiasing);
@@ -558,12 +572,12 @@ namespace Fx::Gfx
         render(painter);
     }
 
-    void FxGfxFxWidget::mouseMoveEvent(QMouseEvent *event)
+    void FxWidget::mouseMoveEvent(QMouseEvent *event)
     {
         QWidget::mouseMoveEvent(event);
 
         auto leftClickDown = event->buttons() == Qt::LeftButton;
-        if ((leftClickDown && currentConnectorIdx < 0) || justAdded)
+        if ((leftClickDown && currentConnectorIdx < 0) || (justAdded && moveAroundOnSpawn))
         {
             auto evtPos = event->globalPos();
             auto delta  = evtPos - mLastMousePos;
@@ -601,7 +615,7 @@ namespace Fx::Gfx
         }
     }
 
-    void FxGfxFxWidget::mousePressEvent(QMouseEvent *event)
+    void FxWidget::mousePressEvent(QMouseEvent *event)
     {
         QWidget::mousePressEvent(event);
 
@@ -633,46 +647,61 @@ namespace Fx::Gfx
         mLastMousePos = event->globalPos();
     }
 
-    void FxGfxFxWidget::leaveEvent(QEvent *event)
+    void FxWidget::leaveEvent(QEvent *event)
     {
         QWidget::leaveEvent(event);
 
         setCursor(Qt::ArrowCursor);
     }
 
-    FxGfxFxWidget::ConnectorPoint::ConnectorPoint(FxGfxFxWidget *pParent)
+    FxWidget::ConnectorPoint::ConnectorPoint(FxWidget *pParent)
     {
         parent = pParent;
         type   = CONN_UNCONNECTED;
         origin = FX_INVALID_INSTANCE_ID;
     }
 
-    QPoint FxGfxFxWidget::getGlobalCentre() const
+    FxWidget::ConnectorPoint * FxWidget::ConnectorPoint::withType(ConnectorType pNewType)
+    {
+        type = pNewType;
+        if (pNewType == CONN_OUTPUT && parent->widgetType == WIDGET_REGULAR)
+        {
+            origin = parent->fxDsc->instanceId;
+        }
+        else if (pNewType == CONN_INPUT)
+        {
+            origin = FX_INVALID_INSTANCE_ID;
+        }
+
+        return this;
+    }
+
+    QPoint FxWidget::getGlobalCentre() const
     {
         return QPoint{x() + width() / 2, y() + height() / 2};
     }
 
-    QPoint FxGfxFxWidget::getLocalCentre() const
+    QPoint FxWidget::getLocalCentre() const
     {
         return QPoint{width() / 2, height() / 2};
     }
 
-    void FxGfxFxWidget::moveToCentre()
+    void FxWidget::moveToCentre()
     {
         move(wndParent->getCenter().x() - width() / 2, wndParent->getCenter().y() - height() / 2);
     }
 
     // input widget
 
-    FxGfxFxWidgetInput *FxGfxFxWidgetInput::instance = nullptr;
+    FxWidgetIn *FxWidgetIn::instance = nullptr;
 
-    FxGfxFxWidgetInput::FxGfxFxWidgetInput(FxGfxMainWindow *pParent): FxGfxFxWidget(pParent)
+    FxWidgetIn::FxWidgetIn(FxMainWindow *pParent): FxWidget(pParent)
     {
         instance = this;
 
         setCursor(Qt::ArrowCursor);
-        widgetType = WIDGET_INPUT;
-        justAdded  = false;
+        widgetType        = WIDGET_INPUT;
+        moveAroundOnSpawn = false;
         moveToCentre();
 
         for (auto &x: connectors)
@@ -681,25 +710,25 @@ namespace Fx::Gfx
         }
     }
 
-    void FxGfxFxWidgetInput::render(QPainter &pPainter)
+    void FxWidgetIn::render(QPainter &pPainter)
     {
         pPainter.drawText(rect(), Qt::AlignCenter, "IN");
     }
 
-    FxGfxFxWidgetInput::~FxGfxFxWidgetInput()
+    FxWidgetIn::~FxWidgetIn()
     = default;
 
     // output widget
 
-    FxGfxFxWidgetOutput *FxGfxFxWidgetOutput::instance = nullptr;
+    FxWidgetOut *FxWidgetOut::instance = nullptr;
 
-    FxGfxFxWidgetOutput::FxGfxFxWidgetOutput(FxGfxMainWindow *pParent) : FxGfxFxWidget(pParent)
+    FxWidgetOut::FxWidgetOut(FxMainWindow *pParent) : FxWidget(pParent)
     {
         instance = this;
 
         setCursor(Qt::ArrowCursor);
-        widgetType = WIDGET_OUTPUT;
-        justAdded  = false;
+        widgetType        = WIDGET_OUTPUT;
+        moveAroundOnSpawn = false;
         moveToCentre();
         move(x() + FX_WIDGET_DEFAULT_WIDTH * 3, y());
 
@@ -709,17 +738,17 @@ namespace Fx::Gfx
         }
     }
 
-    void FxGfxFxWidgetOutput::render(QPainter &pPainter)
+    void FxWidgetOut::render(QPainter &pPainter)
     {
         pPainter.drawText(rect(), Qt::AlignCenter, "OUT");
     }
 
-    FxGfxFxWidgetOutput::~FxGfxFxWidgetOutput()
+    FxWidgetOut::~FxWidgetOut()
     = default;
 
     // gui actions
 
-    void FxGfxMainWindow::showCtxMenu(QPoint pPoint)
+    void FxMainWindow::showCtxMenu(QPoint pPoint)
     {
         QMenu contextMenu("Action", this);
 
@@ -749,13 +778,13 @@ namespace Fx::Gfx
         contextMenu.exec(mapToGlobal(pPoint));
     }
 
-    void FxGfxMainWindow::addActionSimple(QMenu *pMenu, const QString &pLabel, void (FxGfxMainWindow::*pFunc)()) const // NOLINT(*-convert-member-functions-to-static)
+    void FxMainWindow::addActionSimple(QMenu *pMenu, const QString &pLabel, void (FxMainWindow::*pFunc)()) const // NOLINT(*-convert-member-functions-to-static)
     {
         auto action = pMenu->addAction(pLabel);
         connect(action, QAction::triggered, this, pFunc);
     }
 
-    void FxGfxMainWindow::addGain()
+    void FxMainWindow::addGain()
     {
         auto widget = new FxGfxFxWidgetGain(this);
         widget->show();
@@ -763,29 +792,29 @@ namespace Fx::Gfx
         gFxChain.addFxNoOptimize(widget->fxDsc);
     }
 
-    void FxGfxMainWindow::addBezier()
+    void FxMainWindow::addBezier()
     {
     }
 
-    void FxGfxMainWindow::addDiode()
+    void FxMainWindow::addDiode()
     {
     }
 
-    void FxGfxMainWindow::addSum()
+    void FxMainWindow::addSum()
     {
     }
 
-    void FxGfxMainWindow::addDryWet()
+    void FxMainWindow::addDryWet()
     {
     }
 
-    void FxGfxMainWindow::addLopass1()
+    void FxMainWindow::addLopass1()
     {
     }
 
-    void FxGfxMainWindow::addHipass1()
+    void FxMainWindow::addHipass1()
     {
-        auto widget = new FxGfxFxWidgetHighPass1(this);
+        auto widget = new FxWidgetHipass1(this);
         widget->show();
 
         gFxChain.addFxNoOptimize(widget->fxDsc);
